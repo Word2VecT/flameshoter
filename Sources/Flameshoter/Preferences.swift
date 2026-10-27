@@ -205,7 +205,8 @@ import UserNotifications
     general += [
       boolean("startupLaunch", "Launch at login", "登录时启动"),
       boolean("disabledTrayIcon", "Show menu-bar icon", "显示菜单栏图标", inverse: true),
-      boolean("autoCloseIdleDaemon", "Quit the background process when idle", "闲置时退出后台进程"),
+      boolean(
+        "autoCloseIdleDaemon", "Quit when idle with the menu-bar icon hidden", "隐藏菜单栏图标时闲置自动退出"),
       boolean("allowMultipleGuiInstances", "Allow simultaneous capture sessions", "允许同时打开多个截图会话"),
       boolean("showDesktopNotification", "Show save notifications", "显示保存通知"),
       boolean("showStartupLaunchMessage", "Show a welcome notification", "显示启动通知"),

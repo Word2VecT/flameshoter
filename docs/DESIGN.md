@@ -31,7 +31,7 @@ Preview and export share the annotation renderer. Unannotated exports return a d
 
 ## Lifecycle, settings and distribution
 
-A normal visible or minimized titled window enables the regular activation policy. Once ordinary windows close, the app becomes an accessory while retaining its NSStatusItem. Capture and nonactivating utility panels do not count as ordinary windows.
+A normal visible or minimized titled window enables the regular activation policy. Once ordinary windows close, the app becomes an accessory while retaining its NSStatusItem. Capture and nonactivating utility panels do not count as ordinary windows. An enabled menu-bar icon keeps the app resident even when an imported configuration enables idle shutdown. Idle shutdown applies only when the menu-bar icon is hidden.
 
 Settings are JSON in Application Support. The first native launch imports existing Flameshoter INI options, colors and shortcuts; the original stays untouched. Native JSON / INI import and export are supported. Unsupported upload and other-platform integrations are not presented as working controls.
 

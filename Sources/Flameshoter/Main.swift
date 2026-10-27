@@ -9,7 +9,7 @@ import MachO
     let args = Array(CommandLine.arguments.dropFirst())
     if args.contains("--version") || args.contains("-v") {
       let version =
-        Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.2.1"
+        Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.2.2"
       let revision =
         Bundle.main.object(forInfoDictionaryKey: "FlameshoterRevision") as? String ?? "development"
       print("Flameshoter v\(version) (\(revision))\nNative Swift / AppKit · no Qt runtime")

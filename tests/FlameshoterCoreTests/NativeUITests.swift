@@ -174,3 +174,32 @@ import Testing
   canvas.edits.redo()
   #expect(canvas.document.annotations.count == 8)
 }
+
+@Test @MainActor func importedIdleShutdownDoesNotTerminateMenuBarAppWhenLastWindowCloses() throws {
+  let app = NSApplication.shared
+  let previousPolicy = app.activationPolicy()
+  let settings = Environment.shared.settings
+  let previousPreferences = settings.preferences
+  defer {
+    settings.update { $0 = previousPreferences }
+    app.setActivationPolicy(previousPolicy)
+  }
+  let legacy = try SettingsStore.parseINI(
+    "[General]\nautoCloseIdleDaemon=true\ndisabledTrayIcon=false\n")
+  settings.update { $0 = legacy }
+  let controller = AppController(command: nil)
+  let window = NSWindow(
+    contentRect: NSRect(x: 100, y: 100, width: 200, height: 100), styleMask: [.titled, .closable],
+    backing: .buffered, defer: false)
+  window.isReleasedWhenClosed = false
+  window.orderFront(nil)
+  #expect(!controller.shouldQuitWhenIdle())
+  window.close()
+  DockPolicy.update(app)
+  #expect(app.activationPolicy() == .accessory)
+  #expect(!controller.shouldQuitWhenIdle())
+  settings.set("disabledTrayIcon", true)
+  #expect(controller.shouldQuitWhenIdle())
+  settings.set("autoCloseIdleDaemon", false)
+  #expect(!controller.shouldQuitWhenIdle())
+}

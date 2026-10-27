@@ -155,9 +155,11 @@ import UserNotifications
       return
     }
     if item == nil { item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength) }
-    item?.button?.image = NSImage(
-      systemSymbolName: "flame.fill", accessibilityDescription: "Flameshoter")
+    item?.button?.image = Bundle.main.url(forResource: "MenuBarIcon@2x", withExtension: "png")
+      .flatMap { NSImage(contentsOf: $0) }
+    item?.button?.image?.size = NSSize(width: 18, height: 18)
     item?.button?.image?.isTemplate = true
+    item?.button?.setAccessibilityLabel("Flameshoter")
     item?.button?.toolTip = "Flameshoter"
     let menu = NSMenu()
     add(menu, localized("Capture region", "截取区域"), #selector(capture(_:)), symbol: "viewfinder")
@@ -379,14 +381,16 @@ import UserNotifications
     quitIfIdle()
   }
   private func quitIfIdle() {
-    if !preparingRestart, !capturePending,
-      Environment.shared.preferences.bool("autoCloseIdleDaemon"), sessions.isEmpty, pins.isEmpty,
-      !NSApp.windows.contains(where: {
+    if shouldQuitWhenIdle() { NSApp.terminate(nil) }
+  }
+  func shouldQuitWhenIdle() -> Bool {
+    !preparingRestart && !capturePending
+      && Environment.shared.preferences.bool("disabledTrayIcon")
+      && Environment.shared.preferences.bool("autoCloseIdleDaemon")
+      && sessions.isEmpty && pins.isEmpty
+      && !NSApp.windows.contains(where: {
         $0.styleMask.contains(.titled) && ($0.isVisible || $0.isMiniaturized)
       })
-    {
-      NSApp.terminate(nil)
-    }
   }
   func pin(_ image: CGImage, screen: NSScreen? = NSScreen.main) {
     let controller = PinWindowController(image: image, screen: screen)
@@ -529,7 +533,7 @@ import UserNotifications
     NSApp.orderFrontStandardAboutPanel(options: [
       .applicationName: "Flameshoter",
       .applicationVersion: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString")
-        as? String ?? "0.2.1",
+        as? String ?? "0.2.2",
       .version: localized(
         "Native Swift / AppKit · Based on Flameshot", "原生 Swift / AppKit · 基于 Flameshot"),
       .credits: NSAttributedString(

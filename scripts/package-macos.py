@@ -67,6 +67,8 @@ def audit(app):
     for locale in ['en', 'zh-Hans']:
         if not (app / f'Contents/Resources/{locale}.lproj/InfoPlist.strings').exists():
             raise RuntimeError(f'Missing {locale} localization')
+    if not (app / 'Contents/Resources/MenuBarIcon@2x.png').is_file():
+        raise RuntimeError('Missing original flame menu-bar template image')
     print('Bundle audit passed: macOS minimum, Apple frameworks only, no Qt, English and Chinese')
 
 
