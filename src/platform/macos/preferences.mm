@@ -140,10 +140,11 @@ NSStackView* column(NSArray<NSView*>* controls, CGFloat spacing = 14)
     s.translatesAutoresizingMaskIntoConstraints = NO;
     return s;
 }
-NSStackView* row(NSArray<NSView*>* controls)
+NSStackView* row(NSArray<NSView*>* controls, BOOL fill = NO)
 {
     auto s = [NSStackView stackViewWithViews:controls]; s.spacing = 12;
     s.alignment = NSLayoutAttributeCenterY;
+    if (fill) s.distribution = NSStackViewDistributionFill;
     return s;
 }
 NSView* heading(NSString* en, NSString* zh)
@@ -185,7 +186,7 @@ NSView* integer(const char* key, NSString* en, NSString* zh, int low, int high, 
         sender.integerValue = value + displayOffset;
     });
     auto title = text(T(en, zh));
-    return row(@[title, field]);
+    return row(@[title, field], YES);
 }
 NSView* color(const char* key, NSString* en, NSString* zh)
 {
@@ -198,7 +199,7 @@ NSView* color(const char* key, NSString* en, NSString* zh)
         ConfigHandler().setValue(option, QColor::fromRgbF(c.redComponent, c.greenComponent, c.blueComponent, c.alphaComponent));
     });
     auto title = text(T(en, zh));
-    return row(@[title, well]);
+    return row(@[title, well], YES);
 }
 NSView* popup(const char* key, NSString* en, NSString* zh, NSArray<NSString*>* names, const QStringList& values = {})
 {
@@ -410,7 +411,7 @@ NSArray<NSView*>* shortcutSettings()
         auto clear = push(T(@"Clear", @"清除"), ^(id) {
             if (recorder->save(QString())) { recorder->binding.clear(); [recorder refresh]; }
         });
-        [controls addObject:row(@[title, recorder, clear])];
+        [controls addObject:row(@[title, recorder, clear], YES)];
     }
     return controls;
 }
@@ -506,7 +507,7 @@ void MacUI::showPreferences()
         } else NSBeep();
     });
     [tabs addTabViewItem:tab(T(@"Save", @"保存"), @"square.and.arrow.down", @[
-        heading(@"Save folder", @"保存位置"), row(@[path, choose]),
+        heading(@"Save folder", @"保存位置"), row(@[path, choose], YES),
         boolean("savePathFixed", @"Save directly to the selected folder", @"直接保存到所选文件夹"),
         heading(@"Filename pattern", @"文件名格式"), filename, preview,
         text(T(@"%Y year · %m month · %d day · %H hour · %M minute · %S second\nExample: Screenshot_%Y-%m-%d_%H-%M-%S", @"%Y 年 · %m 月 · %d 日 · %H 时 · %M 分 · %S 秒\n示例：截图_%Y-%m-%d_%H-%M-%S"), YES),
