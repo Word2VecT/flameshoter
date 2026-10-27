@@ -253,10 +253,10 @@ import UserNotifications
       heading("Capture toolbar", "截图工具栏"),
       label(
         localized(
-          "Choose the tools shown in the toolbar and More menu. Shortcuts remain available.",
-          "选择工具栏和“更多工具”菜单中显示的工具，隐藏后仍可使用快捷键。"), secondary: true),
+          "Enabled tools appear directly around the capture region, in Flameshot order. Shortcuts remain available.",
+          "已启用的工具按 Flameshot 原版顺序直接显示在选区周围，隐藏后仍可使用快捷键。"), secondary: true),
     ]
-    for tool in Tool.allCases {
+    for tool in Tool.toolbarOrder {
       tools.append(
         ActionCheck(toolTitle(tool), on: p.tools.contains(tool)) { [weak self] on in
           self?.settings.update { prefs in

@@ -1,7 +1,5 @@
-# Flameshoter 0.2.3
+# Flameshoter 0.2.4
 
-Fixes a crash when beginning a region selection or selecting a thin region. Insetting the initial one-pixel selection produced a null rectangle with infinite coordinates, which AppKit rejected while updating cursor regions.
+Enabled capture tools now appear directly around the selection in the original Flameshot macOS order. Tools continue around the other edges when a row fills, and move inside a full-screen selection when there is no outside space. Removes the More tools menu while preserving toolbar preferences, shortcuts and native Apple Liquid Glass controls.
 
-Move cursors are registered only when there is an interior area. Tiny selection image clipping stays within the selection bounds, and hidden dimension labels no longer receive invalid frames. A regression test exercises mouse-down before dragging, one-pixel selections and thin regions.
-
-Retains the original menu-bar flame icon, menu-bar residency fix and fixed signing identity from 0.2.2.
+Retains the selection crash fix, original menu-bar icon, menu-bar residency and fixed signing identity from 0.2.3.

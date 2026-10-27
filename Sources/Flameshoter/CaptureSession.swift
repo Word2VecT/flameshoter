@@ -54,7 +54,7 @@ import FlameshoterCore
       canvas.autoresizingMask = [.width, .height]
       window.canvas = canvas
       window.contentView = canvas
-      let toolbar = CaptureToolbar(canvas: canvas)
+      let toolbar = CaptureToolbar(canvas: canvas, command: command)
       window.captureToolbar = toolbar
       let hint = PassiveGlass()
       hint.style = .regular

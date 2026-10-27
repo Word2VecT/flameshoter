@@ -234,3 +234,65 @@ import Testing
     #expect(canvas.dimensions.frame.size.height >= 0)
   }
 }
+
+@Test func captureToolbarKeepsAllToolsOnScreenAroundSelections() {
+  let bounds = CGRect(x: 0, y: 0, width: 640, height: 480)
+  for selection in [
+    CGRect(x: 100, y: 100, width: 400, height: 250),
+    CGRect(x: 300, y: 200, width: 1, height: 1),
+    CGRect(x: 0, y: 0, width: 1, height: 400),
+    CGRect(x: 500, y: 400, width: 140, height: 80), bounds,
+  ] {
+    let frames = CaptureToolbarLayout.frames(count: 24, selection: selection, bounds: bounds)
+    #expect(frames.count == 24)
+    for (index, frame) in frames.enumerated() {
+      #expect(bounds.insetBy(dx: 12, dy: 12).contains(frame))
+      #expect(!frames.prefix(index).contains { $0.intersects(frame) })
+    }
+    if selection == bounds { #expect(frames.first!.minY > bounds.midY) }
+  }
+}
+
+@Test @MainActor func captureToolbarButtonsAreDirectlyClickableAndRespectConfiguration() throws {
+  let settings = Environment.shared.settings
+  let previous = settings.preferences
+  defer { settings.update { $0 = previous } }
+  settings.update { $0.tools = [.pin, .save, .invert, .line, .pencil, .accept] }
+  let canvas = CanvasView(frame: nativeFrame())
+  let window = CaptureWindow(
+    contentRect: canvas.bounds, styleMask: .borderless, backing: .buffered, defer: false)
+  window.isReleasedWhenClosed = false
+  window.contentView = canvas
+  defer { window.close() }
+  canvas.setSelection(CGRect(x: 200, y: 200, width: 400, height: 250))
+  let toolbar = CaptureToolbar(canvas: canvas)
+  defer { toolbar.close() }
+  func buttons(_ view: NSView) -> [ActionButton] {
+    (view as? ActionButton).map { [$0] } ?? view.subviews.flatMap(buttons)
+  }
+  let controls = buttons(toolbar.root)
+  let expected = [Tool.pencil, .line, .invert, .save, .pin].map(toolTitle)
+  #expect(controls.prefix(expected.count).map { $0.accessibilityLabel() ?? "" } == expected)
+  for button in controls {
+    let rect = button.convert(button.bounds, to: canvas)
+    #expect(rect.width >= 32 && rect.height >= 32)
+    #expect(canvas.bounds.contains(rect))
+    #expect(canvas.hitTest(CGPoint(x: rect.midX, y: rect.midY)) === button)
+  }
+  #expect(canvas.hitTest(CGPoint(x: 300, y: 300)) === canvas)
+  let line = try #require(controls.first { $0.accessibilityLabel() == toolTitle(.line) })
+  line.performClick(nil)
+  #expect(canvas.tool == .line)
+  #expect(line.state == .on)
+  let invert = try #require(controls.first { $0.accessibilityLabel() == toolTitle(.invert) })
+  invert.performClick(nil)
+  #expect(canvas.tool == .invert)
+  toolbar.close()
+  let outputToolbar = CaptureToolbar(
+    canvas: canvas, command: try NativeCommand.parse(["gui", "--raw"]))
+  defer { outputToolbar.close() }
+  let outputLabels = buttons(outputToolbar.root).compactMap { $0.accessibilityLabel() }
+  #expect(outputLabels.contains(toolTitle(.accept)))
+  #expect(!outputLabels.contains(toolTitle(.save)))
+  #expect(!outputLabels.contains(toolTitle(.pin)))
+}

@@ -63,6 +63,12 @@ public enum Tool: Int, Codable, CaseIterable, Identifiable, Sendable {
   case invert = 22
   case accept = 23
   case clearSelection = 24
+  // Original Flameshot macOS button priority, followed by native-only actions.
+  public static let toolbarOrder: [Tool] = [
+    .pencil, .line, .arrow, .select, .rectangle, .ellipse, .marker, .text,
+    .pixelate, .invert, .counter, .moveSelection, .undo, .redo, .copy, .save,
+    .accept, .exit, .pin, .sizeIncrease, .sizeDecrease, .openWith, .clearSelection,
+  ]
   public var id: Int { rawValue }
   public var isDrawing: Bool {
     [.pencil, .line, .arrow, .rectangle, .ellipse, .marker, .pixelate, .text, .counter, .invert]

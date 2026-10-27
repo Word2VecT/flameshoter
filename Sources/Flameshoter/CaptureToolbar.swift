@@ -2,10 +2,83 @@
 import AppKit
 import FlameshoterCore
 
+// Empty space between the native glass buttons must still reach the capture canvas.
+@MainActor final class ToolbarGlassContainer: NSGlassEffectContainerView {
+  override func hitTest(_ point: NSPoint) -> NSView? {
+    let hit = super.hitTest(point)
+    return hit is NSControl ? hit : nil
+  }
+}
+
+/// Flameshot lays enabled tools clockwise around the selection, then inside it
+/// when the screen edges leave no outside space. Coordinates are canvas-local.
+enum CaptureToolbarLayout {
+  static let buttonSize = CGSize(width: 50, height: 48)
+  static func frames(count: Int, selection: CGRect, bounds: CGRect) -> [CGRect] {
+    let area = bounds.insetBy(dx: 12, dy: 12)
+    let pitch = CGSize(width: 56, height: 54)
+    let gap: CGFloat = 10
+    var frames: [CGRect] = []
+    func append(_ origin: CGPoint) {
+      let rect = CGRect(origin: origin, size: buttonSize)
+      if frames.count < count, area.contains(rect),
+        !frames.contains(where: { $0.insetBy(dx: -2, dy: -2).intersects(rect) })
+      {
+        frames.append(rect)
+      }
+    }
+    var ring = CGRect(
+      x: selection.midX - max(buttonSize.width, selection.width) / 2,
+      y: selection.midY - max(buttonSize.height, selection.height) / 2,
+      width: max(buttonSize.width, selection.width),
+      height: max(buttonSize.height, selection.height))
+    for _ in 0..<count {
+      let horizontal = max(1, Int(min(ring.width, area.width) / pitch.width))
+      let vertical = max(1, Int(min(ring.height, area.height) / pitch.height))
+      let x = min(
+        area.maxX - CGFloat(horizontal) * pitch.width,
+        max(area.minX, ring.midX - CGFloat(horizontal) * pitch.width / 2))
+      let y = min(
+        area.maxY - CGFloat(vertical) * pitch.height,
+        max(area.minY, ring.midY - CGFloat(vertical) * pitch.height / 2))
+      for i in 0..<horizontal {
+        append(CGPoint(x: x + CGFloat(i) * pitch.width, y: ring.maxY + gap))
+      }
+      for i in 0..<vertical {
+        append(CGPoint(x: ring.maxX + gap, y: y + CGFloat(i) * pitch.height))
+      }
+      for i in (0..<horizontal).reversed() {
+        append(CGPoint(x: x + CGFloat(i) * pitch.width, y: ring.minY - gap - buttonSize.height))
+      }
+      for i in (0..<vertical).reversed() {
+        append(CGPoint(x: ring.minX - gap - buttonSize.width, y: y + CGFloat(i) * pitch.height))
+      }
+      if frames.count == count || ring.contains(area) { break }
+      ring = ring.insetBy(dx: -pitch.width, dy: -pitch.height)
+    }
+    // A full-screen selection has no outside edges available.
+    if frames.count < count {
+      let columns = max(1, Int((area.width + 6) / pitch.width))
+      for row in 0..<max(1, Int((area.height + 6) / pitch.height)) {
+        for column in 0..<columns {
+          append(
+            CGPoint(
+              x: area.midX - (CGFloat(columns) * pitch.width - 6) / 2 + CGFloat(column)
+                * pitch.width,
+              y: area.maxY - buttonSize.height - CGFloat(row) * pitch.height))
+        }
+        if frames.count == count { break }
+      }
+    }
+    return frames
+  }
+}
+
 @MainActor final class CaptureToolbar: NSObject {
   weak var canvas: CanvasView?
-  let root = NSGlassEffectContainerView()
-  private let groups: NSStackView
+  let root = ToolbarGlassContainer()
+  private let content = FlippedView()
+  private var items: [NSGlassEffectView] = []
   private var buttons: [Tool: ActionButton] = [:]
   private let inspectorButton: ActionButton
   private let popover = NSPopover()
@@ -13,55 +86,30 @@ import FlameshoterCore
   func dismissInspector() { popover.close() }
   private var inspector: ToolInspector?
   private var prefs: Preferences { Environment.shared.preferences }
-  init(canvas: CanvasView) {
+  init(canvas: CanvasView, command: NativeCommand = NativeCommand()) {
     self.canvas = canvas
     inspectorButton = ActionButton("", symbol: "slider.horizontal.3", action: {})
     inspectorButton.toolTip = localized("Tool settings", "工具设置")
     inspectorButton.setAccessibilityLabel(localized("Tool settings", "工具设置"))
-    groups = stack([], vertical: false, spacing: 12)
     super.init()
     root.spacing = 8
-    root.contentView = groups
+    root.contentView = content
     canvas.addSubview(root)
     root.setAccessibilityLabel(localized("Annotation toolbar", "标注工具栏"))
     inspectorButton.invoke = { [weak self] in self?.toggleInspector() }
-    let drawing = stack([], vertical: false, spacing: 2)
-    let commands = stack([], vertical: false, spacing: 2)
-    let primary: [Tool] = [
-      .pencil, .arrow, .rectangle, .ellipse, .marker, .pixelate, .text, .counter,
-    ]
-    for tool in primary where prefs.tools.contains(tool) {
-      drawing.addArrangedSubview(makeButton(tool))
+    let outputRequested = command.copy || command.raw || command.path != nil || command.pin
+    let excluded: [Tool] = outputRequested ? [.copy, .save, .openWith, .pin] : [.accept]
+    for tool in Tool.toolbarOrder where prefs.tools.contains(tool) && !excluded.contains(tool) {
+      items.append(glass(makeButton(tool), radius: 16))
     }
-    let more = ActionButton("", symbol: "ellipsis", action: {})
-    more.toolTip = localized("More tools", "更多工具")
-    more.setAccessibilityLabel(more.toolTip)
-    more.invoke = { [weak self, weak more] in
-      guard let self, let more else { return }
-      let menu = NSMenu()
-      for tool in self.prefs.tools
-      where !primary.contains(tool) && ![.undo, .redo, .copy, .save, .exit].contains(tool) {
-        let item = NSMenuItem(
-          title: toolTitle(tool), action: #selector(self.menuAction(_:)), keyEquivalent: "")
-        item.target = self
-        item.tag = tool.rawValue
-        item.image = NSImage(systemSymbolName: tool.symbol, accessibilityDescription: nil)
-        menu.addItem(item)
-      }
-      menu.popUp(positioning: nil, at: NSPoint(x: 0, y: more.bounds.maxY + 6), in: more)
-    }
-    configure(more)
-    drawing.addArrangedSubview(more)
     if prefs.bool("showSidePanelButton") {
       configure(inspectorButton)
-      commands.addArrangedSubview(inspectorButton)
+      items.append(glass(inspectorButton, radius: 16))
     }
-    for tool in [Tool.undo, .redo, .copy, .save, .exit]
-    where prefs.tools.contains(tool) || tool == .exit {
-      commands.addArrangedSubview(makeButton(tool))
+    for item in items {
+      item.translatesAutoresizingMaskIntoConstraints = true
+      content.addSubview(item)
     }
-    groups.addArrangedSubview(glass(drawing))
-    groups.addArrangedSubview(glass(commands))
     popover.behavior = .semitransient
     refresh()
   }
@@ -82,9 +130,6 @@ import FlameshoterCore
     }
     buttons[tool] = button
     return button
-  }
-  @objc private func menuAction(_ sender: NSMenuItem) {
-    if let tool = Tool(rawValue: sender.tag) { invoke(tool) }
   }
   private func invoke(_ tool: Tool) {
     if tool.isDrawing || [.select, .moveSelection].contains(tool) {
@@ -108,18 +153,19 @@ import FlameshoterCore
       popover.close()
       return
     }
-    groups.orientation = .horizontal
-    groups.layoutSubtreeIfNeeded()
-    if groups.fittingSize.width > canvas.bounds.width - 24 {
-      groups.orientation = .vertical
-      groups.layoutSubtreeIfNeeded()
+    let frames = CaptureToolbarLayout.frames(
+      count: items.count, selection: selection, bounds: canvas.bounds)
+    let frame = frames.reduce(CGRect.null) { $0.union($1) }
+    guard !frame.isNull else {
+      root.isHidden = true
+      return
     }
-    let size = groups.fittingSize
-    let x = max(12, min(canvas.bounds.width - size.width - 12, selection.midX - size.width / 2))
-    var y = selection.maxY + 16
-    if y + size.height > canvas.bounds.height - 12 { y = selection.minY - size.height - 16 }
-    y = max(12, min(canvas.bounds.height - size.height - 12, y))
-    root.frame = NSRect(x: x, y: y, width: size.width, height: size.height)
+    root.frame = frame
+    content.frame = CGRect(origin: .zero, size: frame.size)
+    for (item, rect) in zip(items, frames) {
+      item.frame = rect.offsetBy(dx: -frame.minX, dy: -frame.minY)
+    }
+    root.layoutSubtreeIfNeeded()
     root.isHidden = false
   }
   func toggleInspector() {

@@ -51,7 +51,7 @@ flameshoter config
 
 ## 原生设计与图标
 
-选区整体使用 Apple `NSGlassEffectView` 的 Clear 材质，截图内容作为前景保持清晰，边缘显示系统玻璃效果。选区外采用 `NSVisualEffectView` 的 FullScreenUI 毛玻璃。工具栏使用 `NSGlassEffectContainerView` 组织原生玻璃组；设置、菜单、颜色面板、保存面板、文本编辑、置顶窗口和撤销管理均采用 AppKit。没有自制玻璃着色器或仿制模糊效果。材质只影响预览，导出保留原始矩形像素与标注。
+选区整体使用 Apple `NSGlassEffectView` 的 Clear 材质，截图内容作为前景保持清晰，边缘显示系统玻璃效果。选区外采用 `NSVisualEffectView` 的 FullScreenUI 毛玻璃。已启用的工具按 Flameshot 原版顺序直接沿选区四周排列，屏幕边缘没有空间时放入选区内。工具栏使用 `NSGlassEffectContainerView` 组织原生玻璃按钮；设置、菜单、颜色面板、保存面板、文本编辑、置顶窗口和撤销管理均采用 AppKit。没有自制玻璃着色器或仿制模糊效果。材质只影响预览，导出保留原始矩形像素与标注。
 
 图标保留 Flameshot 的三片火焰轮廓，使用 **Apple Icon Composer** 制作。发布时由 `actool` 将 [`Flameshoter.icon`](packaging/macos/Flameshoter.icon) 编译为系统图标资源，适配浅色、深色及单色外观。
 
