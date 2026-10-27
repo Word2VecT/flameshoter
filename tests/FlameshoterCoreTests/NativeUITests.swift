@@ -203,3 +203,34 @@ import Testing
   settings.set("autoCloseIdleDaemon", false)
   #expect(!controller.shouldQuitWhenIdle())
 }
+
+@Test @MainActor func dragStartAndThinSelectionsHaveValidCursorAndViewRectangles() {
+  let canvas = CanvasView(frame: nativeFrame())
+  let window = CaptureWindow(
+    contentRect: canvas.bounds, styleMask: .borderless, backing: .buffered, defer: false)
+  window.isReleasedWhenClosed = false
+  window.contentView = canvas
+  defer { window.close() }
+  let event = NSEvent.mouseEvent(
+    with: .leftMouseDown, location: canvas.convert(CGPoint(x: 100, y: 100), to: nil),
+    modifierFlags: [], timestamp: 0, windowNumber: window.windowNumber, context: nil,
+    eventNumber: 0, clickCount: 1, pressure: 1)!
+  canvas.mouseDown(with: event)
+  #expect(canvas.document.selection?.size == CGSize(width: 1, height: 1))
+  canvas.resetCursorRects()
+  for size in [
+    CGSize(width: 1, height: 1), CGSize(width: 1, height: 200), CGSize(width: 200, height: 1),
+    CGSize(width: 4, height: 4), CGSize(width: 16, height: 16), CGSize(width: 100, height: 80),
+  ] {
+    canvas.setSelection(CGRect(origin: CGPoint(x: 100, y: 100), size: size))
+    canvas.resetCursorRects()
+    for frame in [canvas.imageClip.frame, canvas.dimensions.frame] {
+      #expect(frame.origin.x.isFinite && frame.origin.y.isFinite)
+      #expect(frame.size.width.isFinite && frame.size.height.isFinite)
+    }
+    #expect(canvas.imageClip.frame.size.width >= 0)
+    #expect(canvas.imageClip.frame.size.height >= 0)
+    #expect(canvas.dimensions.frame.size.width >= 0)
+    #expect(canvas.dimensions.frame.size.height >= 0)
+  }
+}

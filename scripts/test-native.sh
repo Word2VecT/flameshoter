@@ -10,4 +10,4 @@ args=()
 if [[ -f "$TEST_PLUGIN" ]]; then args+=(-Xswiftc -load-plugin-library -Xswiftc "$TEST_PLUGIN"); fi
 cd "$SOURCE_ROOT"
 BUILD_ROOT="${FLAMESHOTER_TEST_BUILD_DIR:-$(getconf DARWIN_USER_CACHE_DIR)/flameshoter-swift-tests}"
-FLAMESHOTER_TEST_CONFIG="$TEST_ROOT" swift test --scratch-path "$BUILD_ROOT" "${args[@]}"
+FLAMESHOTER_TEST_CONFIG="$TEST_ROOT" swift test --scratch-path "$BUILD_ROOT" "${args[@]}" "$@"

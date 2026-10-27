@@ -1,7 +1,7 @@
-# Flameshoter 0.2.2
+# Flameshoter 0.2.3
 
-Closing the last window now keeps Flameshoter running in the menu bar whenever the menu-bar icon is enabled, including when an imported INI enables idle shutdown. Idle shutdown applies only with the menu-bar icon hidden. The preference label now states this behavior.
+Fixes a crash when beginning a region selection or selecting a thin region. Insetting the initial one-pixel selection produced a null rectangle with infinite coordinates, which AppKit rejected while updating cursor regions.
 
-The original three-flame menu-bar template image is restored, replacing the system flame symbol introduced by the native migration. AppKit adapts the original monochrome image to the menu-bar appearance.
+Move cursors are registered only when there is an interior area. Tiny selection image clipping stays within the selection bounds, and hidden dimension labels no longer receive invalid frames. A regression test exercises mouse-down before dragging, one-pixel selections and thin regions.
 
-Includes the native Swift / AppKit editor and Homebrew CLI startup fix from 0.2.1. The fixed signing identity is unchanged.
+Retains the original menu-bar flame icon, menu-bar residency fix and fixed signing identity from 0.2.2.

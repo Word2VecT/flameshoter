@@ -155,7 +155,7 @@ import FlameshoterCore
   override func resetCursorRects() {
     addCursorRect(bounds, cursor: tool == .moveSelection ? .openHand : .crosshair)
     if let r = document.selection {
-      if tool == nil || tool == .moveSelection {
+      if tool == nil || tool == .moveSelection, r.width > 16, r.height > 16 {
         addCursorRect(r.insetBy(dx: 8, dy: 8), cursor: .openHand)
       }
       for x in [r.minX, r.maxX] {
@@ -201,9 +201,10 @@ import FlameshoterCore
     if let r, !r.isEmpty {
       selectionGlass.frame = r
       glassContent.frame = CGRect(origin: .zero, size: r.size)
-      imageClip.frame = selectionGlass.bounds.insetBy(dx: 2, dy: 2)
+      let inset = min(2, min(r.width, r.height) / 2)
+      imageClip.frame = selectionGlass.bounds.insetBy(dx: inset, dy: inset)
       selectedImage.frame = CGRect(
-        x: -r.minX - 2, y: -r.minY - 2, width: bounds.width, height: bounds.height)
+        x: -r.minX - inset, y: -r.minY - inset, width: bounds.width, height: bounds.height)
       drawing.frame = CGRect(x: -r.minX, y: -r.minY, width: bounds.width, height: bounds.height)
       let points = [
         CGPoint(x: r.minX, y: r.minY), CGPoint(x: r.midX, y: r.minY), CGPoint(x: r.maxX, y: r.minY),
@@ -236,6 +237,8 @@ import FlameshoterCore
   private func updateDimensions(_ rect: CGRect) {
     let position = prefs.integer("showSelectionGeometry")
     dimensions.isHidden = position == 0 || rect.width < 110 || rect.height < 32
+    dimensionsTimer?.invalidate()
+    guard !dimensions.isHidden else { return }
     dimensions.stringValue =
       "\(Int(rect.width*document.scale)) × \(Int(rect.height*document.scale))  ·  \(Int(rect.minX*document.scale)), \(Int(rect.minY*document.scale))"
     let width = min(280, rect.width - 16)
@@ -259,7 +262,6 @@ import FlameshoterCore
       dimensions.alignment = .right
     }
     dimensions.frame = CGRect(origin: origin, size: CGSize(width: width, height: height))
-    dimensionsTimer?.invalidate()
     let duration = prefs.integer("showSelectionGeometryHideTime")
     if duration > 0 {
       dimensionsTimer = Timer.scheduledTimer(
