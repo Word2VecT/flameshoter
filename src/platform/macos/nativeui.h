@@ -49,7 +49,7 @@ void installMenu();
 bool setLaunchAtLogin(bool enabled);
 bool ensureScreenCaptureAccess();
 void repairScreenCaptureAccess();
-void restartApp(bool captureOnLaunch = false);
+void restartApp();
 QColor systemAccentColor();
 void showPreferences();
 void showLauncher();
