@@ -127,7 +127,9 @@ NSTextField* text(NSString* value, BOOL secondary = NO)
 {
     auto t = [NSTextField wrappingLabelWithString:value];
     t.textColor = secondary ? NSColor.secondaryLabelColor : NSColor.labelColor;
-    t.preferredMaxLayoutWidth = 590;
+    t.lineBreakMode = NSLineBreakByWordWrapping;
+    [t setContentCompressionResistancePriority:NSLayoutPriorityDefaultLow forOrientation:NSLayoutConstraintOrientationHorizontal];
+    [t setContentHuggingPriority:NSLayoutPriorityDefaultLow forOrientation:NSLayoutConstraintOrientationHorizontal];
     return t;
 }
 NSStackView* column(NSArray<NSView*>* controls, CGFloat spacing = 14)
@@ -182,7 +184,7 @@ NSView* integer(const char* key, NSString* en, NSString* zh, int low, int high, 
         ConfigHandler().setValue(option, value);
         sender.integerValue = value + displayOffset;
     });
-    auto title = text(T(en, zh)); [title.widthAnchor constraintEqualToConstant:330].active = YES;
+    auto title = text(T(en, zh));
     return row(@[title, field]);
 }
 NSView* color(const char* key, NSString* en, NSString* zh)
@@ -195,7 +197,7 @@ NSView* color(const char* key, NSString* en, NSString* zh)
         auto c = [sender.color colorUsingColorSpace:NSColorSpace.sRGBColorSpace];
         ConfigHandler().setValue(option, QColor::fromRgbF(c.redComponent, c.greenComponent, c.blueComponent, c.alphaComponent));
     });
-    auto title = text(T(en, zh)); [title.widthAnchor constraintEqualToConstant:330].active = YES;
+    auto title = text(T(en, zh));
     return row(@[title, well]);
 }
 NSView* popup(const char* key, NSString* en, NSString* zh, NSArray<NSString*>* names, const QStringList& values = {})
@@ -215,15 +217,25 @@ NSTabViewItem* tab(NSString* title, NSString* image, NSArray<NSView*>* controls)
 {
     auto content = column(controls);
     auto document = [FSSettingsDocument new];
+    document.translatesAutoresizingMaskIntoConstraints = NO;
     [document addSubview:content];
-    [content.widthAnchor constraintEqualToConstant:600].active = YES;
     [content.leadingAnchor constraintEqualToAnchor:document.leadingAnchor constant:28].active = YES;
+    [content.trailingAnchor constraintEqualToAnchor:document.trailingAnchor constant:-28].active = YES;
     [content.topAnchor constraintEqualToAnchor:document.topAnchor constant:28].active = YES;
-    [content layoutSubtreeIfNeeded];
-    document.frame = NSMakeRect(0, 0, 660, qMax(560.0, content.fittingSize.height + 56));
+    [content.bottomAnchor constraintEqualToAnchor:document.bottomAnchor constant:-28].active = YES;
+    for (NSView* control in controls) {
+        if ([control isKindOfClass:NSStackView.class] || [control isKindOfClass:NSTextField.class])
+            [control.widthAnchor constraintEqualToAnchor:content.widthAnchor].active = YES;
+        else [control.widthAnchor constraintLessThanOrEqualToAnchor:content.widthAnchor].active = YES;
+    }
     auto scroll = [[NSScrollView alloc] initWithFrame:NSMakeRect(0,0,660,560)];
     scroll.hasVerticalScroller = YES; scroll.drawsBackground = NO;
+    scroll.hasHorizontalScroller = NO;
     scroll.documentView = document;
+    [NSLayoutConstraint activateConstraints:@[
+        [document.widthAnchor constraintEqualToAnchor:scroll.contentView.widthAnchor],
+        [document.leadingAnchor constraintEqualToAnchor:scroll.contentView.leadingAnchor],
+        [document.topAnchor constraintEqualToAnchor:scroll.contentView.topAnchor]]];
     auto controller = [NSViewController new]; controller.view = scroll;
     auto item = [NSTabViewItem tabViewItemWithViewController:controller]; item.label = title;
     item.image = [NSImage imageWithSystemSymbolName:image accessibilityDescription:title];
@@ -361,6 +373,7 @@ NSString* shortcutTitle(const QString& key)
     bool found = false; const int type = meta.keyToValue(key.toUtf8().constData(), &found);
     if (found) { std::unique_ptr<CaptureTool> tool(ToolFactory().CreateTool((CaptureTool::Type)type)); if (tool) return S(tool->name()); }
     const QMap<QString, QPair<NSString*, NSString*>> names = {
+        {"TYPE_CANCEL", {@"Clear capture region", @"清除截图选区"}},
         {"TAKE_SCREENSHOT", {@"Capture screen", @"全局截图"}},
         {"TYPE_TOGGLE_PANEL", {@"Tool settings", @"工具设置"}},
         {"TYPE_GRAB_COLOR", {@"Pick a screen color", @"拾取屏幕颜色"}},
@@ -387,12 +400,12 @@ NSArray<NSView*>* shortcutSettings()
     auto names = ConfigHandler::recognizedShortcutNames().values(); std::sort(names.begin(), names.end());
     names.removeAll("SCREENSHOT_HISTORY"); names.removeAll("TAKE_SCREENSHOT"); names.prepend("TAKE_SCREENSHOT");
     for (const QString& name : names) {
-        auto title = text(shortcutTitle(name)); [title.widthAnchor constraintEqualToConstant:325].active = YES;
+        auto title = text(shortcutTitle(name));
         auto recorder = [FSShortcutRecorder new]; recorder->binding = ConfigHandler().shortcut(name);
         recorder->save = [name](const QString& value) { return ConfigHandler().setShortcut(name, value); };
         recorder.bezelStyle = NSBezelStyleRounded;
         recorder.target = recorder; recorder.action = @selector(record:); [recorder refresh];
-        [recorder.widthAnchor constraintEqualToConstant:160].active = YES;
+        [recorder.widthAnchor constraintEqualToConstant:140].active = YES;
         [recorder setAccessibilityLabel:shortcutTitle(name)];
         auto clear = push(T(@"Clear", @"清除"), ^(id) {
             if (recorder->save(QString())) { recorder->binding.clear(); [recorder refresh]; }
@@ -466,11 +479,14 @@ void MacUI::showPreferences()
         boolean("antialiasingPinZoom", @"Smooth pinned capture zoom", @"平滑缩放置顶截图"),
         push(T(@"Screen Recording permissions…", @"屏幕录制权限…"), ^(id) {
             [NSWorkspace.sharedWorkspace openURL:[NSURL URLWithString:@"x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture"]];
-        })])];
+        }),
+        push(T(@"Restart Flameshoter", @"重新启动 Flameshoter"), ^(id) { restartApp(); }),
+        push(T(@"Repair Screen Recording authorization…", @"修复屏幕录制授权…"), ^(id) { repairScreenCaptureAccess(); })])];
     [tabs addTabViewItem:tab(T(@"Toolbar", @"工具栏"), @"slider.horizontal.3", toolbarSettings())];
     [tabs addTabViewItem:tab(T(@"Colors", @"颜色"), @"paintpalette", paletteSettings())];
     auto path = [NSTextField textFieldWithString:S(ConfigHandler().savePath())];
-    [path.widthAnchor constraintEqualToConstant:470].active = YES;
+    [path setContentCompressionResistancePriority:NSLayoutPriorityDefaultLow forOrientation:NSLayoutConstraintOrientationHorizontal];
+    [path setContentHuggingPriority:NSLayoutPriorityDefaultLow forOrientation:NSLayoutConstraintOrientationHorizontal];
     on(path, ^(NSTextField* sender) {
         if (QDir(Q(sender.stringValue)).exists()) ConfigHandler().setSavePath(Q(sender.stringValue));
         else { NSBeep(); sender.stringValue = S(ConfigHandler().savePath()); }
@@ -482,7 +498,7 @@ void MacUI::showPreferences()
         }];
     });
     auto filename = [NSTextField textFieldWithString:S(ConfigHandler().filenamePattern())];
-    [filename.widthAnchor constraintEqualToConstant:590].active = YES;
+    [filename setContentCompressionResistancePriority:NSLayoutPriorityDefaultLow forOrientation:NSLayoutConstraintOrientationHorizontal];
     auto preview = text(S(FileNameHandler().parsedPattern()), YES);
     on(filename, ^(NSTextField* sender) {
         if (ConfigHandler::validSetting("General", "filenamePattern", Q(sender.stringValue))) {
@@ -519,10 +535,12 @@ void MacUI::showPreferences()
         text(T(@"Traditional pixelation may retain information. The default method replaces the interior using surrounding colors.", @"传统像素化可能保留原始信息。默认方法会使用周围颜色替换区域内部内容。"), YES)])];
     [tabs addTabViewItem:tab(T(@"Shortcuts", @"快捷键"), @"keyboard", shortcutSettings())];
     settingsWindow = [[NSWindow alloc] initWithContentRect:NSMakeRect(0,0,660,620)
-        styleMask:NSWindowStyleMaskTitled | NSWindowStyleMaskClosable | NSWindowStyleMaskMiniaturizable
+        styleMask:NSWindowStyleMaskTitled | NSWindowStyleMaskClosable | NSWindowStyleMaskMiniaturizable | NSWindowStyleMaskResizable
         backing:NSBackingStoreBuffered defer:NO];
     settingsWindow.releasedWhenClosed = NO;
     settingsWindow.title = T(@"Flameshoter Settings", @"Flameshoter 设置");
     settingsWindow.contentViewController = tabs;
+    settingsWindow.contentMinSize = NSMakeSize(580, 480);
+    [settingsWindow setContentSize:NSMakeSize(660, 620)];
     [settingsWindow center]; [settingsWindow makeKeyAndOrderFront:nil]; [NSApp activateIgnoringOtherApps:YES];
 }

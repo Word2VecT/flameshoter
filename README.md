@@ -18,6 +18,8 @@ brew install --cask Word2VecT/tap/flameshoter
 
 升级：`brew upgrade --cask flameshoter`。
 
+若系统已开启权限但仍无法截图，在“设置 → 截图”选择“修复屏幕录制授权…”，重启后按系统提示重新允许。此操作只重建 Flameshoter 的录屏授权。临时签名更新后可能需要此步骤；要在版本间稳定保留授权，需要 Developer ID 签名。
+
 ## 使用
 
 - 启动窗口中的“试用标注工具”可打开示例画布。

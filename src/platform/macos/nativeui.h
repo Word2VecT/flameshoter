@@ -48,6 +48,8 @@ namespace MacUI {
 void installMenu();
 bool setLaunchAtLogin(bool enabled);
 bool ensureScreenCaptureAccess();
+void repairScreenCaptureAccess();
+void restartApp(bool captureOnLaunch = false);
 QColor systemAccentColor();
 void showPreferences();
 void showLauncher();

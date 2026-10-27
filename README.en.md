@@ -1,5 +1,7 @@
 # Flameshoter
 
+If Screen Recording is enabled but capture still fails, use **Settings → Capture → Repair Screen Recording authorization…** and grant access to the restarted app. This resets only Flameshoter's Screen Recording record. Ad hoc signed updates can require fresh consent; retaining authorization across versions requires a stable Developer ID signing identity.
+
 A macOS screenshot and annotation app derived from [Flameshot](https://github.com/flameshot-org/flameshot), with native AppKit Liquid Glass controls and Chinese/English UI.
 
 Requires Apple Silicon and macOS 26 or later for the initial binary release.

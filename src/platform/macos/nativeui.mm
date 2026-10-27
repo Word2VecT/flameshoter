@@ -8,6 +8,7 @@
 #include <QApplication>
 #include <QLocale>
 #include <QPointer>
+#include <QProcess>
 #include <QTimer>
 #include <QWidget>
 #import <AppKit/AppKit.h>
@@ -619,15 +620,66 @@ void MacCaptureBar::showInspector()
 bool MacUI::ensureScreenCaptureAccess()
 {
     if (!qEnvironmentVariableIsEmpty("FLAMESHOTER_TEST_IMAGE") || CGPreflightScreenCaptureAccess()) return true;
-    if (CGRequestScreenCaptureAccess()) return true;
+    CGRequestScreenCaptureAccess();
+    if (CGPreflightScreenCaptureAccess()) return true;
     auto alert = [NSAlert new];
     alert.messageText = L(@"Allow screen recording to take screenshots", @"允许屏幕录制以使用截图功能");
-    alert.informativeText = L(@"Enable Flameshoter in System Settings → Privacy & Security → Screen Recording, then restart the app.", @"请在“系统设置 → 隐私与安全”的屏幕录制权限中允许 Flameshoter，然后重新启动应用。");
+    alert.informativeText = L(@"Enable Flameshoter in System Settings, then choose Restart. Closing a window leaves the menu bar process running. If access is already enabled but still fails, repair the authorization to register this version again.", @"请先在系统设置中允许 Flameshoter，再点“重新启动”。关闭窗口不会退出菜单栏后台进程。若开关已开启仍无效，请点“修复授权…”重新登记当前版本。");
     [alert addButtonWithTitle:L(@"Open System Settings", @"打开系统设置")];
+    [alert addButtonWithTitle:L(@"Restart", @"重新启动")];
+    [alert addButtonWithTitle:L(@"Repair Authorization…", @"修复授权…")];
     [alert addButtonWithTitle:L(@"Later", @"稍后")];
-    if ([alert runModal] == NSAlertFirstButtonReturn)
+    const auto response = [alert runModal];
+    if (response == NSAlertFirstButtonReturn)
         [NSWorkspace.sharedWorkspace openURL:[NSURL URLWithString:@"x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture"]];
+    else if (response == NSAlertSecondButtonReturn) restartApp(true);
+    else if (response == NSAlertThirdButtonReturn) repairScreenCaptureAccess();
     return false;
+}
+
+void MacUI::restartApp(bool captureOnLaunch)
+{
+    // Wait for the whole menu-bar process to exit before LaunchServices opens
+    // the installed bundle, so the new instance cannot be forwarded to the old one.
+    const QString script = QString::fromUtf8(R"RELAUNCH(
+i=0
+while /bin/kill -0 "$1" 2>/dev/null; do
+    i=$((i+1))
+    if [ "$i" -ge 100 ]; then exit 1; fi
+    /bin/sleep 0.2
+done
+exec /usr/bin/open -n -a "$2" --args "$3"
+)RELAUNCH");
+    if (!QProcess::startDetached("/bin/sh", {"-c", script, "flameshoter-relaunch",
+            QString::number(QCoreApplication::applicationPid()),
+            qs(NSBundle.mainBundle.bundlePath), captureOnLaunch ? "gui" : "launcher"})) {
+        auto alert = [NSAlert new];
+        alert.messageText = L(@"Unable to restart Flameshoter", @"无法重新启动 Flameshoter");
+        alert.informativeText = L(@"Quit Flameshoter from its menu, then open it from Applications.", @"请从菜单退出 Flameshoter，再从“应用程序”重新打开。");
+        [alert runModal]; return;
+    }
+    QTimer::singleShot(0, qApp, [] { qApp->quit(); });
+}
+
+void MacUI::repairScreenCaptureAccess()
+{
+    auto alert = [NSAlert new];
+    alert.messageText = L(@"Register this version's screen recording authorization again?", @"重新登记当前版本的屏幕录制授权？");
+    alert.informativeText = L(@"Ad hoc signed updates can leave an authorization for an older build. This removes only Flameshoter's Screen Recording record and restarts the app. Allow access again in the macOS prompt. Other apps and permissions are unaffected.", @"临时签名版本更新后，系统可能保留旧版本的授权。本操作只清除 Flameshoter 的屏幕录制记录，并彻底重启应用；随后请在系统提示中重新允许。不会更改其他应用的权限。");
+    [alert addButtonWithTitle:L(@"Cancel", @"取消")];
+    [alert addButtonWithTitle:L(@"Repair and Restart", @"修复并重新启动")];
+    if ([alert runModal] != NSAlertSecondButtonReturn) return;
+    const QString bundle = qs(NSBundle.mainBundle.bundleIdentifier);
+    if (bundle != "io.github.Word2VecT.flameshoter") return;
+    QProcess reset;
+    reset.start("/usr/bin/tccutil", {"reset", "ScreenCapture", bundle});
+    if (!reset.waitForFinished(5000) || reset.exitStatus() != QProcess::NormalExit || reset.exitCode() != 0) {
+        auto failure = [NSAlert new];
+        failure.messageText = L(@"Authorization could not be refreshed", @"无法刷新授权记录");
+        failure.informativeText = L(@"In Screen Recording settings, remove Flameshoter using the minus button, then add the app from Applications again.", @"请在系统的屏幕录制设置中，用减号移除 Flameshoter，再从“应用程序”中重新添加。");
+        [failure runModal]; return;
+    }
+    restartApp(true);
 }
 
 
