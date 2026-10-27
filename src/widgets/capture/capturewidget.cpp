@@ -103,6 +103,12 @@ CaptureWidget::CaptureWidget(const CaptureRequest& req,
     m_opacity = m_config.contrastOpacity();
     m_uiColor = m_config.uiColor();
     m_contrastUiColor = m_config.contrastUiColor();
+#if defined(Q_OS_MACOS)
+    if (m_config.useSystemAccentColor()) {
+        m_uiColor = MacUI::systemAccentColor();
+        m_contrastUiColor = m_uiColor.darker(160);
+    }
+#endif
     setMouseTracking(true);
     initContext(fullScreen, req);
 
@@ -126,6 +132,16 @@ CaptureWidget::CaptureWidget(const CaptureRequest& req,
         if (!testImage.isEmpty()) {
             m_context.screenshot = QPixmap(testImage);
             ok = !m_context.screenshot.isNull();
+            if (ok) {
+                QScreen* demoScreen = QGuiApplication::primaryScreen();
+                const qreal scale = demoScreen->devicePixelRatio();
+                const QSize target = demoScreen->size() * scale;
+                m_context.screenshot = m_context.screenshot.scaled(target, Qt::KeepAspectRatioByExpanding, Qt::SmoothTransformation);
+                const QRect crop(QPoint((m_context.screenshot.width() - target.width()) / 2,
+                                       (m_context.screenshot.height() - target.height()) / 2), target);
+                m_context.screenshot = m_context.screenshot.copy(crop);
+                m_context.screenshot.setDevicePixelRatio(scale);
+            }
         } else {
             m_context.screenshot = grabber.grabEntireDesktop(ok, preSelectedMonitor);
         }
@@ -251,6 +267,36 @@ CaptureWidget::CaptureWidget(const CaptureRequest& req,
     native->thicknessChanged = [this](int n) { emit toolSizeChanged(n); };
     native->layerSelected = [this](int n) { m_panel->setActiveLayer(n); };
     native->deleteLayer = [this] { deleteCurrentTool(); updateLayersPanel(); };
+    native->layerMoved = [this](int direction) {
+        int layer = m_panel->activeLayerIndex();
+        if (layer < 0 || layer + direction < 0 || layer + direction >= m_captureToolObjects.size()) return;
+        if (direction < 0) onMoveCaptureToolUp(layer); else onMoveCaptureToolDown(layer);
+        m_panel->setActiveLayer(layer + direction);
+        drawToolsData(); updateLayersPanel(); update();
+    };
+    native->fontChanged = [this](const QString& family) {
+        for (CaptureTool* tool : {activeButtonTool(), activeToolObject().data(), m_activeTool.data()}) {
+            if (tool && tool->type() == CaptureTool::TYPE_TEXT)
+                QMetaObject::invokeMethod(tool, "updateFamily", Q_ARG(QString, family));
+        }
+        drawToolsData(); updateLayersPanel(); update();
+    };
+    native->textStyleChanged = [this](const QString& style, int value) {
+        for (CaptureTool* tool : {activeButtonTool(), activeToolObject().data(), m_activeTool.data()}) {
+            if (!tool || tool->type() != CaptureTool::TYPE_TEXT) continue;
+            if (style == "alignment") {
+                const Qt::AlignmentFlag flags[] = {Qt::AlignLeft, Qt::AlignHCenter, Qt::AlignRight};
+                QMetaObject::invokeMethod(tool, "updateAlignment", Q_ARG(Qt::AlignmentFlag, flags[qBound(0, value, 2)]));
+            } else if (style == "bold") {
+                const QFont::Weight weight = value ? QFont::Bold : QFont::Normal;
+                QMetaObject::invokeMethod(tool, "updateFontWeight", Q_ARG(QFont::Weight, weight));
+            } else {
+                const char* method = style == "italic" ? "updateFontItalic" : style == "underline" ? "updateFontUnderline" : "updateFontStrikeOut";
+                QMetaObject::invokeMethod(tool, method, Q_ARG(bool, bool(value)));
+            }
+        }
+        drawToolsData(); updateLayersPanel(); update();
+    };
     native->hoverChanged = [this](bool inside) { inside ? childEnter() : childLeave(); };
     connect(this, &CaptureWidget::colorChanged, native, [native](const QColor& c) { native->setColor(c); });
     connect(this, &CaptureWidget::toolSizeChanged, native, [native](int n) { native->setThickness(n); });
@@ -307,10 +353,12 @@ CaptureWidget::CaptureWidget(const CaptureRequest& req,
       m_context.fullscreen && !areas.isEmpty() ? areas.first() : rect();
     OverlayMessage::init(this, overlayArea);
 
+#if !defined(Q_OS_MACOS)
     if (m_config.showHelp()) {
         initHelpMessage();
         OverlayMessage::push(m_helpMessage);
     }
+#endif
 
     initQuitPrompt();
 
@@ -822,7 +870,7 @@ void CaptureWidget::paintEvent(QPaintEvent* paintEvent)
 void CaptureWidget::showColorPicker(const QPoint& pos)
 {
 #if defined(Q_OS_MACOS)
-    m_buttonHandler->nativeBar()->toggleInspector();
+    m_buttonHandler->nativeBar()->showInspector();
     return;
 #endif
     // Try to select new object if current pos out of active object
@@ -1106,6 +1154,7 @@ void CaptureWidget::setToolSize(int size)
     m_context.toolSize = qBound(1, size, maxToolSize);
     updateTool(activeButtonTool());
 
+#if !defined(Q_OS_MACOS)
     QScreen* topLeftScreen = QGuiAppCurrentScreen().currentScreen();
     QPoint topLeft(0, 0);
     if (topLeftScreen) {
@@ -1119,6 +1168,7 @@ void CaptureWidget::setToolSize(int size)
     int offset = m_notifierBox->width() / 4;
     m_notifierBox->move(mapFromGlobal(topLeft) + QPoint(offset, offset));
     m_notifierBox->showMessage(QString::number(m_context.toolSize));
+#endif
 
     if (m_context.toolSize != oldSize) {
         emit toolSizeChanged(m_context.toolSize);
@@ -1629,6 +1679,10 @@ void CaptureWidget::setDrawColor(const QColor& c)
 
 void CaptureWidget::updateActiveLayer(int layer)
 {
+#if defined(Q_OS_MACOS)
+    auto selected = m_captureToolObjects.at(layer);
+    m_buttonHandler->nativeBar()->setActiveTool(selected ? selected->type() : activeButtonToolType());
+#endif
     // TODO - refactor this part, make all objects to work with
     // m_activeTool->isChanged() and remove m_existingObjectIsChanged
     if (m_activeTool && m_activeTool->type() == CaptureTool::TYPE_TEXT &&

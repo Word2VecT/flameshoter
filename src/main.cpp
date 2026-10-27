@@ -114,6 +114,8 @@ QSharedMemory* guiMutexLock()
 
 void configureTranslation(QTranslator& translator, QTranslator& qtTranslator)
 {
+    QCoreApplication::setApplicationName(QStringLiteral("flameshoter"));
+    QCoreApplication::setOrganizationName(QStringLiteral("flameshoter"));
     bool foundTranslation;
     // Configure translations
     for (const QString& path : PathInfo::translationsPaths()) {
@@ -172,6 +174,13 @@ void configureTranslation(QTranslator& translator, QTranslator& qtTranslator)
           QStringLiteral("qt_") + ConfigHandler().uiLanguage(),
 
           QLibraryInfo::path(QLibraryInfo::TranslationsPath));
+    }
+    if (!foundTranslation) {
+        for (const QString& path : PathInfo::translationsPaths()) {
+            const QLocale locale = ConfigHandler().uiLanguage() == "auto" ? QLocale::system() : QLocale(ConfigHandler().uiLanguage());
+            foundTranslation = qtTranslator.load(locale, "qtbase", "_", path);
+            if (foundTranslation) break;
+        }
     }
     if (!foundTranslation) {
         if (ConfigHandler().uiLanguage() == QStringLiteral("auto")) {

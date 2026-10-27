@@ -20,6 +20,7 @@
 
 #if defined(Q_OS_MACOS)
 #include <QProcess>
+#include "platform/macos/nativeui.h"
 #endif
 
 // HELPER FUNCTIONS
@@ -95,6 +96,7 @@ static QMap<class QString, QSharedPointer<ValueHandler>>
     OPTION("antialiasingPinZoom"         ,Bool               ( true          )),
     OPTION("useJpgForClipboard"          ,Bool               ( false         )),
 #if defined(Q_OS_MACOS)
+    OPTION("useSystemAccentColor"        ,Bool               ( true          )),
     OPTION("useNativeFullscreen"         ,Bool               ( false         )),
 #endif
     OPTION("uploadWithoutConfirmation"   ,Bool               ( false         )),
@@ -107,8 +109,8 @@ static QMap<class QString, QSharedPointer<ValueHandler>>
     OPTION("undoLimit"                   ,BoundedInt         ( 0, 999, 100   )),
     // Interface tab
     OPTION("uiLanguage"                  ,String             ( "auto"        )),
-    OPTION("uiColor"                     ,Color              ( {116, 0, 150} )),
-    OPTION("contrastUiColor"             ,Color              ( {39, 0, 50}   )),
+    OPTION("uiColor"                     ,Color              ( {0, 122, 255} )),
+    OPTION("contrastUiColor"             ,Color              ( {25, 70, 120} )),
     OPTION("contrastOpacity"             ,BoundedInt         ( 0, 255, 190   )),
     OPTION("buttons"                     ,ButtonList         ( {}            )),
     // Filename Editor tab
@@ -269,9 +271,11 @@ ConfigHandler* ConfigHandler::getInstance()
 bool ConfigHandler::startupLaunch()
 {
     bool res = value(QStringLiteral("startupLaunch")).toBool();
+#if !defined(Q_OS_MACOS)
     if (res != verifyLaunchFile()) {
         setStartupLaunch(res);
     }
+#endif
     return res;
 }
 
@@ -282,33 +286,7 @@ void ConfigHandler::setStartupLaunch(const bool start)
     }
     setValue(QStringLiteral("startupLaunch"), start);
 #if defined(Q_OS_MACOS)
-    /* TODO - there should be more correct way via API, but didn't find it
-     without extra dependencies, there should be something like that:
-     https://stackoverflow.com/questions/3358410/programmatically-run-at-startup-on-mac-os-x
-     But files with this features differs on different MacOS versions and it
-     doesn't work not on a BigSur at lease.
-     */
-    QProcess process;
-    if (start) {
-        process.start("osascript",
-                      QStringList()
-                        << "-e"
-                        << "tell application \"System Events\" to make login "
-                           "item at end with properties {name: "
-                           "\"Flameshot\",path:\"/Applications/"
-                           "flameshot.app\", hidden:false}");
-    } else {
-        process.start("osascript",
-                      QStringList() << "-e"
-                                    << "tell application \"System Events\" to "
-                                       "delete login item \"Flameshot\"");
-    }
-    if (!process.waitForFinished()) {
-        qWarning() << "Login items is changed. " << process.errorString();
-    } else {
-        qWarning() << "Unable to change login items, error:"
-                   << process.readAll();
-    }
+    if (!MacUI::setLaunchAtLogin(start)) setValue(QStringLiteral("startupLaunch"), !start);
 #elif defined(Q_OS_UNIX)
     QString path =
       QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation) +
@@ -847,3 +825,16 @@ bool ConfigHandler::m_errorCheckPending = true;
 bool ConfigHandler::m_skipNextErrorCheck = false;
 
 QSharedPointer<QFileSystemWatcher> ConfigHandler::m_configWatcher;
+
+bool ConfigHandler::validSetting(const QString& group, const QString& key, const QVariant& value)
+{
+    if (group == QStringLiteral("General")) {
+        auto it = ::recognizedGeneralOptions.constFind(key);
+        return it != ::recognizedGeneralOptions.constEnd() && it.value()->check(value);
+    }
+    if (group == QStringLiteral("Shortcuts")) {
+        auto it = ::recognizedShortcuts.constFind(key);
+        return it != ::recognizedShortcuts.constEnd() && it.value()->check(value);
+    }
+    return false;
+}

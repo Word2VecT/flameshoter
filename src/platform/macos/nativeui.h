@@ -28,10 +28,14 @@ public:
     void setThickness(int thickness);
     void setLayers(const QStringList& names, int selected);
     void toggleInspector();
+    void showInspector();
 
     std::function<void(const QColor&)> colorChanged;
     std::function<void(int)> thicknessChanged;
     std::function<void(int)> layerSelected;
+    std::function<void(int)> layerMoved;
+    std::function<void(const QString&)> fontChanged;
+    std::function<void(const QString&, int)> textStyleChanged;
     std::function<void()> deleteLayer;
     std::function<void(bool)> hoverChanged;
 
@@ -42,8 +46,12 @@ private:
 
 namespace MacUI {
 void installMenu();
+bool setLaunchAtLogin(bool enabled);
+bool ensureScreenCaptureAccess();
+QColor systemAccentColor();
 void showPreferences();
 void showLauncher();
+void showDemo();
 void showAbout();
 bool confirmDiscard();
 }

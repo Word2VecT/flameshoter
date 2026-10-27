@@ -82,3 +82,11 @@ result-*
 
 # direnv
 .direnv
+
+# Flameshoter local development and packaging
+.venv/
+.qt/
+dist/
+
+__pycache__/
+*.pyc

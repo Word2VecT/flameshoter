@@ -11,6 +11,7 @@
 #include <QTimer>
 #include <QWidget>
 #import <AppKit/AppKit.h>
+#import <CoreGraphics/CoreGraphics.h>
 #import <objc/runtime.h>
 
 namespace {
@@ -211,11 +212,16 @@ void activate(NSWindow* window)
 struct MacCaptureBar::Private {
     QPointer<QWidget> widget;
     __strong FSGlassContainer* root;
+    __strong NSGlassEffectView* hint;
+    __strong NSPanel* panel;
+    __weak NSView* host;
+    QRect barRect;
     __strong NSPopover* inspector;
     __strong NSColorWell* color;
     __strong NSSlider* thickness;
     __strong NSTextField* sizeLabel;
     __strong NSPopUpButton* layers;
+    __strong NSStackView* textOptions;
     __strong NSMutableDictionary<NSNumber*, NSButton*>* buttons;
     QRect selection;
     bool visible = false;
@@ -273,7 +279,7 @@ MacCaptureBar::MacCaptureBar(QWidget* host,
     }
     auto settings = iconButton(L(@"Tool settings", @"工具设置"),
                                 @"slider.horizontal.3", ^(id) { toggleInspector(); });
-    [commands insertObject:settings atIndex:0];
+    if (ConfigHandler().showSidePanelButton()) [commands insertObject:settings atIndex:0];
     auto groups = stack(@[glass(stack(drawing, NSUserInterfaceLayoutOrientationHorizontal, 2)),
                            glass(stack(commands, NSUserInterfaceLayoutOrientationHorizontal, 2))],
                          NSUserInterfaceLayoutOrientationHorizontal, 12);
@@ -282,8 +288,47 @@ MacCaptureBar::MacCaptureBar(QWidget* host,
     NSSize fitting = groups.fittingSize;
     [d->root setFrameSize:fitting];
     auto nativeHost = (__bridge NSView*)reinterpret_cast<void*>(host->winId());
-    [nativeHost addSubview:d->root];
-    d->root.hidden = YES;
+    d->host = nativeHost;
+    d->panel = [[NSPanel alloc] initWithContentRect:NSMakeRect(0,0,fitting.width,fitting.height)
+        styleMask:NSWindowStyleMaskBorderless | NSWindowStyleMaskNonactivatingPanel
+        backing:NSBackingStoreBuffered defer:NO];
+    d->panel.title = L(@"Annotation toolbar", @"标注工具栏");
+    d->panel.floatingPanel = YES;
+    d->panel.hidesOnDeactivate = NO;
+    d->panel.becomesKeyOnlyIfNeeded = YES;
+    d->panel.opaque = NO;
+    d->panel.backgroundColor = NSColor.clearColor;
+    d->panel.hasShadow = YES;
+    d->panel.releasedWhenClosed = NO;
+    d->panel.collectionBehavior = NSWindowCollectionBehaviorFullScreenAuxiliary;
+    d->panel.contentView = d->root;
+    d->root.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
+    [nativeHost.window addChildWindow:d->panel ordered:NSWindowAbove];
+    [d->panel orderOut:nil];
+    if (ConfigHandler().showHelp()) {
+        auto title = label(L(@"Drag to select a capture region", @"拖动选择截图区域"), 17);
+        auto detail = label(L(@"⌘C Copy  ·  ⌘S Save  ·  Space Tool settings  ·  Esc Cancel", @"⌘C 复制 · ⌘S 保存 · 空格 工具设置 · Esc 取消"), 12, YES);
+        detail.preferredMaxLayoutWidth = 400;
+        [detail.widthAnchor constraintEqualToConstant:400].active = YES;
+        [title.widthAnchor constraintEqualToConstant:400].active = YES;
+        auto hints = stack(@[title, detail], NSUserInterfaceLayoutOrientationVertical, 8);
+        d->hint = glass(hints);
+        d->hint.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
+        QTimer::singleShot(0, this, [this]() {
+            if (d->visible || !d->selection.isEmpty() || !d->host) return;
+            auto host = d->host;
+            const NSSize size = d->hint.contentView.fittingSize;
+            NSRect local = NSMakeRect((NSWidth(host.bounds)-size.width)/2,
+                                      (NSHeight(host.bounds)-size.height)/2, size.width, size.height);
+            if (d->panel.parentWindow != host.window) [host.window addChildWindow:d->panel ordered:NSWindowAbove];
+            d->panel.level = host.window.level + 1;
+            d->panel.contentView = d->hint;
+            d->panel.ignoresMouseEvents = YES;
+            [d->panel setAccessibilityElement:NO];
+            [d->panel setFrame:[host.window convertRectToScreen:[host convertRect:local toView:nil]] display:YES];
+            [d->panel orderFront:nil];
+        });
+    }
 
     d->color = [NSColorWell new];
     d->color.color = nativeColor(ConfigHandler().drawColor());
@@ -309,17 +354,51 @@ MacCaptureBar::MacCaptureBar(QWidget* host,
         if (deleteLayer) deleteLayer();
     });
     auto font = [[NSPopUpButton alloc] initWithFrame:NSZeroRect pullsDown:NO];
-    [font addItemsWithTitles:@[@"System", @"Helvetica Neue", @"PingFang SC", @"Menlo"]];
+    [font addItemsWithTitles:NSFontManager.sharedFontManager.availableFontFamilies];
     [font selectItemWithTitle:ns(ConfigHandler().fontFamily())];
     action(font, ^(NSPopUpButton* sender) {
         ConfigHandler().setFontFamily(qs(sender.titleOfSelectedItem));
+        if (fontChanged) fontChanged(qs(sender.titleOfSelectedItem));
     });
+    auto formats = [NSMutableArray<NSView*> new];
+    const QList<QPair<QString, NSString*>> styles = {{"bold", L(@"Bold", @"粗体")}, {"italic", L(@"Italic", @"斜体")}, {"underline", L(@"Underline", @"下划线")}, {"strike", L(@"Strikethrough", @"删除线")}};
+    for (const auto& entry : styles) {
+        const QString key = entry.first;
+        auto toggle = [NSButton checkboxWithTitle:entry.second target:nil action:nil];
+        action(toggle, ^(NSButton* sender) { if (textStyleChanged) textStyleChanged(key, sender.state == NSControlStateValueOn); });
+        [formats addObject:toggle];
+    }
+    auto alignment = [[NSPopUpButton alloc] initWithFrame:NSZeroRect pullsDown:NO];
+    [alignment addItemsWithTitles:@[L(@"Align left", @"左对齐"), L(@"Center", @"居中"), L(@"Align right", @"右对齐")]];
+    action(alignment, ^(NSPopUpButton* sender) { if (textStyleChanged) textStyleChanged("alignment", (int)sender.indexOfSelectedItem); });
+    d->textOptions = stack(@[font, stack(formats, NSUserInterfaceLayoutOrientationVertical, 6), alignment], NSUserInterfaceLayoutOrientationVertical, 8);
+    d->textOptions.hidden = YES;
+    auto moveUp = button(L(@"Move up", @"上移图层"), @"arrow.up", ^(id) { if (layerMoved) layerMoved(-1); });
+    auto moveDown = button(L(@"Move down", @"下移图层"), @"arrow.down", ^(id) { if (layerMoved) layerMoved(1); });
+    auto presets = [NSMutableArray<NSView*> new];
+    for (const QColor preset : ConfigHandler().userColors()) {
+        auto swatch = button(@"", nil, ^(id) {
+            setColor(preset); if (colorChanged) colorChanged(preset);
+        });
+        swatch.toolTip = ns(preset.name());
+        [swatch setAccessibilityLabel:ns(preset.name())];
+        swatch.image = [NSImage imageWithSize:NSMakeSize(18,18) flipped:NO drawingHandler:^BOOL(NSRect rect) {
+            [nativeColor(preset) setFill]; [[NSBezierPath bezierPathWithOvalInRect:NSInsetRect(rect, 1, 1)] fill]; return YES;
+        }];
+        swatch.imagePosition = NSImageOnly;
+        [presets addObject:swatch];
+    }
+    auto presetRows = [NSMutableArray<NSView*> new];
+    for (NSUInteger start = 0; start < presets.count; start += 5)
+        [presetRows addObject:stack([presets subarrayWithRange:NSMakeRange(start, MIN(5, presets.count-start))], NSUserInterfaceLayoutOrientationHorizontal, 4)];
     auto inspectorContent = stack(@[
         label(L(@"Tool settings", @"工具设置"), 17),
+        stack(presetRows, NSUserInterfaceLayoutOrientationVertical, 4),
         stack(@[label(L(@"Color", @"颜色")), d->color], NSUserInterfaceLayoutOrientationHorizontal),
         d->sizeLabel, d->thickness,
-        label(L(@"Font for new text", @"新文字的字体")), font,
-        label(L(@"Annotations", @"标注图层")), d->layers, remove,
+        d->textOptions,
+        label(L(@"Annotations", @"标注图层")), d->layers,
+        stack(@[moveUp, moveDown], NSUserInterfaceLayoutOrientationHorizontal, 8), remove,
         label(L(@"Space toggles this panel. Right-click opens it.",
                 @"按空格键切换面板，右键打开面板。"), 11, YES)],
         NSUserInterfaceLayoutOrientationVertical);
@@ -336,29 +415,37 @@ MacCaptureBar::MacCaptureBar(QWidget* host,
 MacCaptureBar::~MacCaptureBar()
 {
     [d->inspector close];
+    [d->panel.parentWindow removeChildWindow:d->panel];
+    [d->panel close];
     [d->root removeFromSuperview];
+    [d->hint removeFromSuperview];
     d->root.hover = nil;
 }
 void MacCaptureBar::setVisible(bool visible)
 {
     d->visible = visible;
-    d->root.hidden = !visible;
-    if (!visible) [d->inspector close];
+    if (visible) {
+        if (d->panel.parentWindow != d->host.window) [d->host.window addChildWindow:d->panel ordered:NSWindowAbove];
+        d->panel.level = d->host.window.level + 1;
+        d->panel.contentView = d->root;
+        d->panel.ignoresMouseEvents = NO;
+        [d->panel setAccessibilityElement:YES];
+        [d->panel orderFront:nil];
+    } else {
+        [d->panel orderOut:nil];
+        [d->inspector close];
+    }
 }
 bool MacCaptureBar::isVisible() const { return d->visible; }
 bool MacCaptureBar::contains(const QPoint& p) const
 {
-    if (!d->widget || !d->visible) return false;
-    const NSRect frame = d->root.frame;
-    const auto host = d->root.superview;
-    const CGFloat y = host.isFlipped ? p.y() : NSHeight(host.bounds) - p.y();
-    return NSPointInRect(NSMakePoint(p.x(), y), frame);
+    return d->widget && d->visible && d->barRect.contains(p);
 }
 void MacCaptureBar::setSelection(const QRect& selection)
 {
     d->selection = selection;
     if (!d->widget) return;
-    auto host = d->root.superview;
+    auto host = d->host;
     const CGFloat width = NSWidth(host.bounds), height = NSHeight(host.bounds);
     NSSize size = d->root.contentView.fittingSize;
     CGFloat scale = qMin(1.0, (width - 24.0) / qMax(1.0, size.width));
@@ -374,11 +461,13 @@ void MacCaptureBar::setSelection(const QRect& selection)
     CGFloat y = selection.bottom() + 16;
     if (y + size.height > height - 12) y = selection.top() - size.height - 16;
     y = qBound(12.0, y, qMax(12.0, height - size.height - 12));
-    d->root.frame = NSMakeRect(x, host.isFlipped ? y : height - y - size.height,
-                               size.width, size.height);
+    d->barRect = QRect(qRound(x), qRound(y), qRound(size.width), qRound(size.height));
+    const NSRect local = NSMakeRect(x, host.isFlipped ? y : height - y - size.height, size.width, size.height);
+    [d->panel setFrame:[host.window convertRectToScreen:[host convertRect:local toView:nil]] display:YES];
 }
 void MacCaptureBar::setActiveTool(int type)
 {
+    d->textOptions.hidden = type != CaptureTool::TYPE_TEXT;
     for (NSNumber* key in d->buttons) {
         auto b = d->buttons[key];
         b.contentTintColor = key.intValue == type ? NSColor.controlAccentColor : NSColor.labelColor;
@@ -412,51 +501,6 @@ void MacCaptureBar::toggleInspector()
 }
 
 namespace {
-NSView* check(NSString* en, NSString* zh, const char* key)
-{
-    QString option = QString::fromUtf8(key);
-    auto b = [NSButton checkboxWithTitle:L(en, zh) target:nil action:nil];
-    b.state = ConfigHandler().value(option).toBool() ? NSControlStateValueOn : NSControlStateValueOff;
-    action(b, ^(NSButton* sender) { ConfigHandler().setValue(option, sender.state == NSControlStateValueOn); });
-    return b;
-}
-NSView* textOption(NSString* en, NSString* zh, const char* key)
-{
-    QString option = QString::fromUtf8(key);
-    auto field = [NSTextField textFieldWithString:ns(ConfigHandler().value(option).toString())];
-    field.translatesAutoresizingMaskIntoConstraints = NO;
-    [field.widthAnchor constraintEqualToConstant:320].active = YES;
-    [field setAccessibilityLabel:L(en, zh)];
-    action(field, ^(NSTextField* sender) { ConfigHandler().setValue(option, qs(sender.stringValue)); });
-    return stack(@[label(L(en, zh)), field], NSUserInterfaceLayoutOrientationVertical, 6);
-}
-NSView* sliderOption(NSString* en, NSString* zh, const char* key, int low, int high)
-{
-    QString option = QString::fromUtf8(key);
-    auto title = label([NSString stringWithFormat:@"%@: %d", L(en, zh), ConfigHandler().value(option).toInt()]);
-    auto slider = [NSSlider sliderWithValue:ConfigHandler().value(option).toInt()
-                                 minValue:low maxValue:high target:nil action:nil];
-    slider.translatesAutoresizingMaskIntoConstraints = NO;
-    [slider.widthAnchor constraintEqualToConstant:320].active = YES;
-    [slider setAccessibilityLabel:L(en, zh)];
-    action(slider, ^(NSSlider* sender) {
-        int value = (int)lround(sender.doubleValue);
-        ConfigHandler().setValue(option, value);
-        title.stringValue = [NSString stringWithFormat:@"%@: %d", L(en, zh), value];
-    });
-    return stack(@[title, slider], NSUserInterfaceLayoutOrientationVertical, 6);
-}
-NSTabViewItem* page(NSString* title, NSString* image, NSArray<NSView*>* controls)
-{
-    auto content = stack(controls, NSUserInterfaceLayoutOrientationVertical, 16);
-    auto controller = [NSViewController new];
-    controller.view = padded(content, 28);
-    auto item = [NSTabViewItem tabViewItemWithViewController:controller];
-    item.label = title;
-    item.image = [NSImage imageWithSystemSymbolName:image accessibilityDescription:title];
-    return item;
-}
-__strong NSWindow* preferences;
 __strong NSWindow* launcher;
 }
 
@@ -480,95 +524,11 @@ void MacUI::installMenu()
     auto windowRoot = [[NSMenuItem alloc] initWithTitle:L(@"Window", @"窗口") action:nil keyEquivalent:@""];
     auto windowMenu = [[NSMenu alloc] initWithTitle:windowRoot.title];
     add(windowMenu, L(@"Capture window", @"截图窗口"), @"n", ^(id) { showLauncher(); });
+    add(windowMenu, L(@"Try annotation tools", @"试用标注工具"), @"", ^(id) { showDemo(); });
     auto close = [[NSMenuItem alloc] initWithTitle:L(@"Close Window", @"关闭窗口") action:@selector(performClose:) keyEquivalent:@"w"];
     [windowMenu addItem:close];
     windowRoot.submenu = windowMenu; [main addItem:windowRoot];
     NSApp.mainMenu = main;
-}
-
-void MacUI::showPreferences()
-{
-    installMenu();
-    if (preferences) { activate(preferences); return; }
-    auto tabs = [NSTabViewController new];
-    tabs.tabStyle = NSTabViewControllerTabStyleToolbar;
-    auto language = [[NSPopUpButton alloc] initWithFrame:NSZeroRect pullsDown:NO];
-    [language addItemsWithTitles:@[L(@"Follow System", @"跟随系统"), @"简体中文", @"English"]];
-    auto current = ConfigHandler().uiLanguage();
-    [language selectItemAtIndex:current.startsWith("zh") ? 1 : current == "en" ? 2 : 0];
-    [language setAccessibilityLabel:L(@"Interface language", @"界面语言")];
-    action(language, ^(NSPopUpButton* sender) {
-        ConfigHandler().setUiLanguage(sender.indexOfSelectedItem == 1 ? "zh_CN" :
-                                     sender.indexOfSelectedItem == 2 ? "en" : "auto");
-        auto alert = [NSAlert new];
-        alert.messageText = L(@"Language updated", @"语言已更新");
-        alert.informativeText = L(@"Restart Flameshoter to update all menus and windows.",
-                                  @"重新启动 Flameshoter 后，所有菜单和窗口将使用新语言。");
-        [alert addButtonWithTitle:L(@"OK", @"好")];
-        [alert beginSheetModalForWindow:preferences completionHandler:nil];
-    });
-    auto directory = button(L(@"Choose save folder…", @"选择保存文件夹…"), @"folder", ^(id) {
-        auto panel = [NSOpenPanel openPanel];
-        panel.canChooseDirectories = YES; panel.canChooseFiles = NO;
-        panel.canCreateDirectories = YES; panel.allowsMultipleSelection = NO;
-        [panel beginSheetModalForWindow:preferences completionHandler:^(NSModalResponse result) {
-            if (result == NSModalResponseOK) ConfigHandler().setSavePath(qs(panel.URL.path));
-        }];
-    });
-    auto permissions = button(L(@"Screen Recording permissions…", @"屏幕录制权限…"),
-        @"lock.shield", ^(id) {
-            [NSWorkspace.sharedWorkspace openURL:[NSURL URLWithString:
-                @"x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture"]];
-        });
-    [tabs addTabViewItem:page(L(@"General", @"通用"), @"gearshape", @[
-        label(L(@"Interface language", @"界面语言")), language,
-        label(L(@"Uses the system appearance, accent color, contrast, transparency and motion preferences.",
-                @"外观、强调色、对比度、透明度和动态效果均遵循系统设置。"), 12, YES),
-        check(@"Show capture instructions", @"显示截图操作提示", "showHelp"),
-        check(@"Show desktop notifications", @"显示桌面通知", "showDesktopNotification"),
-        check(@"Confirm before discarding a capture", @"丢弃截图前询问", "showQuitPrompt"),
-        permissions])];
-    [tabs addTabViewItem:page(L(@"Capture", @"截图"), @"viewfinder", @[
-        directory, textOption(@"Filename pattern", @"文件名格式", "filenamePattern"),
-        check(@"Save to the chosen folder without asking", @"直接保存到所选文件夹", "savePathFixed"),
-        check(@"Also save after copying", @"复制后同时保存", "saveAfterCopy"),
-        check(@"Copy the path after saving", @"保存后复制路径", "copyPathAfterSave"),
-        check(@"Remember the last capture region", @"记住上次截图区域", "saveLastRegion"),
-        check(@"Double-click to copy", @"双击复制截图", "copyOnDoubleClick"),
-        check(@"Show magnifier", @"显示放大镜", "showMagnifier"),
-        sliderOption(@"Outside selection dimming", @"选区外遮罩深度", "contrastOpacity", 0, 255)])];
-    [tabs addTabViewItem:page(L(@"Annotation", @"标注"), @"pencil.tip", @[
-        sliderOption(@"Stroke width", @"线条宽度", "drawThickness", 1, 30),
-        sliderOption(@"Text size", @"文字字号", "drawFontSize", 8, 96),
-        sliderOption(@"Pixelation size", @"马赛克尺寸", "drawPixelateSize", 1, 50),
-        sliderOption(@"Marker width", @"荧光笔宽度", "drawMarkerSize", 1, 60),
-        check(@"Reverse arrow direction", @"反转箭头方向", "reverseArrow"),
-        check(@"Outline numbered annotations", @"为序号标注绘制轮廓", "drawCircleCounterOutline"),
-        label(L(@"During capture, open Tool Settings to change color, size, font or select an annotation.",
-                @"截图时打开“工具设置”，即可调整颜色、尺寸、字体或选择标注图层。"), 12, YES)])];
-    auto shortcuts = [NSMutableArray<NSView*> new];
-    [shortcuts addObject:label(L(@"Capture shortcut", @"截图快捷键"), 17)];
-    auto shortcut = [NSTextField textFieldWithString:ns(ConfigHandler().shortcut("TAKE_SCREENSHOT"))];
-    [shortcut setAccessibilityLabel:L(@"Global capture shortcut", @"全局截图快捷键")];
-    action(shortcut, ^(NSTextField* sender) {
-        if (!ConfigHandler().setShortcut("TAKE_SCREENSHOT", qs(sender.stringValue))) {
-            NSBeep();
-            sender.stringValue = ns(ConfigHandler().shortcut("TAKE_SCREENSHOT"));
-        }
-    });
-    [shortcuts addObject:shortcut];
-    [shortcuts addObject:label(L(@"Use Qt shortcut notation, for example Ctrl+Shift+X (⌘⇧X on Mac). Restart after changing the global shortcut.",
-        @"使用 Qt 快捷键格式，例如 Ctrl+Shift+X（Mac 上对应 ⌘⇧X）。修改全局快捷键后请重启应用。"), 12, YES)];
-    [shortcuts addObject:label(L(@"⌘C  Copy    ⌘S  Save    ⌘Z  Undo    ⇧⌘Z  Redo\nP  Pencil    A  Arrow    R  Rectangle    T  Text\nB  Pixelate    Space  Tool settings    Esc  Cancel",
-        @"⌘C 复制    ⌘S 保存    ⌘Z 撤销    ⇧⌘Z 重做\nP 画笔    A 箭头    R 矩形    T 文字\nB 马赛克    空格 工具设置    Esc 取消"))];
-    [tabs addTabViewItem:page(L(@"Shortcuts", @"快捷键"), @"keyboard", shortcuts)];
-    preferences = [[NSWindow alloc] initWithContentRect:NSMakeRect(0,0,560,600)
-        styleMask:NSWindowStyleMaskTitled | NSWindowStyleMaskClosable
-        backing:NSBackingStoreBuffered defer:NO];
-    preferences.releasedWhenClosed = NO;
-    preferences.title = L(@"Flameshoter Settings", @"Flameshoter 设置");
-    preferences.contentViewController = tabs;
-    activate(preferences);
 }
 
 void MacUI::showLauncher()
@@ -596,6 +556,7 @@ void MacUI::showLauncher()
                 @"拖动选择截图区域，再用浮动工具栏进行标注。截图保存在你的 Mac 上。"), 13, YES),
         stack(@[label(L(@"Delay", @"延迟")), delay], NSUserInterfaceLayoutOrientationHorizontal),
         stack(@[capture, settings], NSUserInterfaceLayoutOrientationHorizontal),
+        button(L(@"Try annotation tools", @"试用标注工具"), @"pencil.tip", ^(id) { showDemo(); }),
         label(L(@"Press ⌘⇧X anywhere to start a capture.\nFlameshoter stays in the menu bar when this window closes.",
                 @"默认可随时按 ⌘⇧X 开始截图。\n关闭此窗口后，Flameshoter 会继续驻留菜单栏。"), 12, YES)],
         NSUserInterfaceLayoutOrientationVertical, 20);
@@ -627,4 +588,41 @@ bool MacUI::confirmDiscard()
     [alert addButtonWithTitle:L(@"Keep Editing", @"继续编辑")];
     [alert addButtonWithTitle:L(@"Discard", @"丢弃")];
     return [alert runModal] == NSAlertSecondButtonReturn;
+}
+
+void MacCaptureBar::showInspector()
+{
+    if (!d->inspector.shown) toggleInspector();
+}
+
+
+bool MacUI::ensureScreenCaptureAccess()
+{
+    if (!qEnvironmentVariableIsEmpty("FLAMESHOTER_TEST_IMAGE") || CGPreflightScreenCaptureAccess()) return true;
+    if (CGRequestScreenCaptureAccess()) return true;
+    auto alert = [NSAlert new];
+    alert.messageText = L(@"Allow screen recording to take screenshots", @"允许屏幕录制以使用截图功能");
+    alert.informativeText = L(@"Enable Flameshoter in System Settings → Privacy & Security → Screen Recording, then restart the app.", @"请在“系统设置 → 隐私与安全”的屏幕录制权限中允许 Flameshoter，然后重新启动应用。");
+    [alert addButtonWithTitle:L(@"Open System Settings", @"打开系统设置")];
+    [alert addButtonWithTitle:L(@"Later", @"稍后")];
+    if ([alert runModal] == NSAlertFirstButtonReturn)
+        [NSWorkspace.sharedWorkspace openURL:[NSURL URLWithString:@"x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture"]];
+    return false;
+}
+
+
+void MacUI::showDemo()
+{
+    [launcher orderOut:nil];
+    const QByteArray previous = qgetenv("FLAMESHOTER_TEST_IMAGE");
+    const QString path = QCoreApplication::applicationDirPath() + "/../Resources/flameshoter-demo.png";
+    qputenv("FLAMESHOTER_TEST_IMAGE", path.toUtf8());
+    Flameshot::instance()->gui();
+    if (previous.isNull()) qunsetenv("FLAMESHOTER_TEST_IMAGE");
+    else qputenv("FLAMESHOTER_TEST_IMAGE", previous);
+}
+
+QColor MacUI::systemAccentColor()
+{
+    return qtColor(NSColor.controlAccentColor);
 }

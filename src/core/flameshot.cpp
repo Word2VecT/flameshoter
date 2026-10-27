@@ -92,12 +92,6 @@ Flameshot::Flameshot()
     qApp->setStyleSheet(StyleSheet);
 #endif
 
-#if defined(Q_OS_MACOS)
-    // Request Screen Recording permission via the proper CoreGraphics API
-    if (qEnvironmentVariableIsEmpty("FLAMESHOTER_TEST_IMAGE") && !CGPreflightScreenCaptureAccess()) {
-        CGRequestScreenCaptureAccess();
-    }
-#endif
 #if (defined(Q_OS_MACOS) || defined(Q_OS_WIN))
     // Set global shortcuts for MacOS or Windows
     m_HotkeyScreenshotCapture = new QHotkey(
@@ -125,6 +119,9 @@ Flameshot* Flameshot::instance()
 
 CaptureWidget* Flameshot::gui(const CaptureRequest& req)
 {
+#if defined(Q_OS_MACOS)
+    if (!MacUI::ensureScreenCaptureAccess()) { emit captureFailed(); return nullptr; }
+#endif
     if (!resolveAnyConfigErrors()) {
         return nullptr;
     }
@@ -193,6 +190,9 @@ CaptureWidget* Flameshot::gui(const CaptureRequest& req)
 
 void Flameshot::screen(CaptureRequest req, const int screenNumber)
 {
+#if defined(Q_OS_MACOS)
+    if (!MacUI::ensureScreenCaptureAccess()) { emit captureFailed(); return; }
+#endif
     if (!resolveAnyConfigErrors()) {
         return;
     }
@@ -247,6 +247,9 @@ void Flameshot::screen(CaptureRequest req, const int screenNumber)
 
 void Flameshot::full(const CaptureRequest& req)
 {
+#if defined(Q_OS_MACOS)
+    if (!MacUI::ensureScreenCaptureAccess()) { emit captureFailed(); return; }
+#endif
     if (!resolveAnyConfigErrors()) {
         return;
     }

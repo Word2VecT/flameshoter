@@ -1,0 +1,51 @@
+name: Build and release macOS
+on:
+  push:
+    branches: [master]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: xcode-27
+    steps:
+      - uses: actions/checkout@v6
+      - name: Install official Qt and build tools
+        run: |
+          brew install cmake ninja
+          python3 -m venv .venv
+          .venv/bin/pip install aqtinstall==3.3.0
+          .venv/bin/python -m aqt install-qt mac desktop 6.12.0 clang_64 \
+            --archives qtbase qtsvg qttools qttranslations qtdeclarative -O .qt
+      - name: Build and verify portable app
+        env:
+          FLAMESHOTER_QT_ROOT: ${{ github.workspace }}/.qt/6.12.0/macos
+        run: |
+          ./scripts/build-macos.sh --package
+          VERSION=$(sed -n 's/^set(FLAMESHOT_VERSION \([0-9.]*\)).*/\1/p' CMakeLists.txt)
+          if [[ "$GITHUB_REF" == refs/tags/* ]]; then test "$GITHUB_REF_NAME" = "v$VERSION"; fi
+          python3 scripts/make-cask.py --archive "dist/Flameshoter-$VERSION-macos-arm64.zip" \
+            --version "$VERSION" --out dist/Casks/flameshoter.rb
+          shasum -a 256 "dist/Flameshoter-$VERSION-macos-arm64.zip" > dist/SHA256SUMS
+      - uses: actions/upload-artifact@v7
+        with:
+          name: flameshoter-macos-arm64
+          path: dist/
+  release:
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: write
+    steps:
+      - uses: actions/checkout@v6
+      - name: Publish the verified release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh run download "$GITHUB_RUN_ID" -R "$GITHUB_REPOSITORY" -n flameshoter-macos-arm64 -D dist
+          gh release create "$GITHUB_REF_NAME" dist/*.zip dist/SHA256SUMS dist/Casks/flameshoter.rb \
+            --title "Flameshoter $GITHUB_REF_NAME" --notes-file docs/RELEASE_NOTES.md

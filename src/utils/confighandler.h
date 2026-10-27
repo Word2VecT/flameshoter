@@ -125,6 +125,7 @@ public:
     CONFIG_GETTER_SETTER(useJpgForClipboard, setUseJpgForClipboard, bool)
 #if defined(Q_OS_MACOS)
     CONFIG_GETTER_SETTER(useNativeFullscreen, setUseNativeFullscreen, bool)
+    CONFIG_GETTER_SETTER(useSystemAccentColor, setUseSystemAccentColor, bool)
 #endif
     CONFIG_GETTER_SETTER(uploadWithoutConfirmation,
                          setUploadWithoutConfirmation,
@@ -172,6 +173,8 @@ public:
     QString filenamePatternDefault();
     void setDefaultSettings();
     QString configFilePath() const;
+
+    static bool validSetting(const QString& group, const QString& key, const QVariant& value);
 
     // GENERIC GETTERS AND SETTERS
     bool setShortcut(const QString& actionName, const QString& shortcut);
