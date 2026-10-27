@@ -342,7 +342,7 @@ NSArray<NSView*>* paletteSettings()
     [controls addObject:follow];
     [controls addObject:border]; [controls addObject:contrast];
     [controls addObject:color("drawColor", @"Default annotation color", @"默认标注颜色")];
-    [controls addObject:integer("contrastOpacity", @"Outside selection dimming", @"选区外遮罩深度", 0, 255)];
+    [controls addObject:integer("contrastOpacity", @"Outside material strength", @"选区外毛玻璃强度", 0, 255)];
     [controls addObject:heading(@"Color presets", @"预设颜色")];
     const auto colors = ConfigHandler().userColors();
     for (int i = 0; i < colors.size(); ++i) {

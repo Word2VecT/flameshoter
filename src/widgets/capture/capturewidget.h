@@ -25,6 +25,11 @@
 #include <QTimer>
 #include <QUndoStack>
 #include <QWidget>
+#include <memory>
+
+#if defined(Q_OS_MACOS)
+class MacCaptureMaterial;
+#endif
 
 class QLabel;
 class QPaintEvent;
@@ -163,6 +168,9 @@ private:
 
     // Context information
     CaptureContext m_context;
+#if defined(Q_OS_MACOS)
+    std::unique_ptr<MacCaptureMaterial> m_captureMaterial;
+#endif
     QScreen* m_selectedScreen = nullptr;
 
     // Main ui color

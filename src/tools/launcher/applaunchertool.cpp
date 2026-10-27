@@ -3,6 +3,9 @@
 
 #include "applaunchertool.h"
 #include "tools/launcher/applauncherwidget.h"
+#if defined(Q_OS_MACOS)
+#include "platform/macos/nativeui.h"
+#endif
 
 AppLauncher::AppLauncher(QObject* parent)
   : AbstractActionTool(parent)
@@ -47,6 +50,11 @@ void AppLauncher::pressed(CaptureContext& context)
 {
     capture = context.selectedScreenshotArea();
     emit requestAction(REQ_CAPTURE_DONE_OK);
+#if defined(Q_OS_MACOS)
+    emit requestAction(REQ_HIDE_GUI);
+    MacUI::openWith(capture);
+#else
     emit requestAction(REQ_ADD_EXTERNAL_WIDGETS);
+#endif
     emit requestAction(REQ_CLOSE_GUI);
 }

@@ -15,6 +15,8 @@
 #include <Shlobj.h>
 
 #pragma comment(lib, "Shell32.lib")
+#elif defined(Q_OS_MACOS)
+#include "platform/macos/nativeui.h"
 #else
 #include "tools/launcher/applauncherwidget.h"
 #endif
@@ -39,6 +41,8 @@ void showOpenWithMenu(const QPixmap& capture)
     info.pcszClass = nullptr;
     info.oaifInFlags = OAIF_ALLOW_REGISTRATION | OAIF_EXEC;
     SHOpenWithDialog(nullptr, &info);
+#elif defined(Q_OS_MACOS)
+    MacUI::openWith(capture);
 #else
     auto* w = new AppLauncherWidget(capture);
     w->show();

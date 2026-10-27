@@ -6,6 +6,9 @@
 #include "utils/confighandler.h"
 #include "utils/globalvalues.h"
 #include "utils/screenshotsaver.h"
+#if defined(Q_OS_MACOS)
+#include "platform/macos/nativeui.h"
+#endif
 
 #include <QGraphicsDropShadowEffect>
 #include <QGraphicsOpacityEffect>
@@ -51,7 +54,9 @@ PinWidget::PinWidget(const QPixmap& pixmap,
     m_shadowEffect->setColor(m_baseColor);
     m_shadowEffect->setBlurRadius(BLUR_RADIUS);
     m_shadowEffect->setOffset(0, 0);
+#if !defined(Q_OS_MACOS)
     setGraphicsEffect(m_shadowEffect);
+#endif
     setWindowOpacity(m_opacity);
 
     m_label->setPixmap(m_pixmap);
@@ -93,6 +98,9 @@ PinWidget::PinWidget(const QPixmap& pixmap,
             &QWidget::customContextMenuRequested,
             this,
             &PinWidget::showContextMenu);
+#if defined(Q_OS_MACOS)
+    MacUI::useSystemWindowShadow(this);
+#endif
 }
 
 void PinWidget::closePin()

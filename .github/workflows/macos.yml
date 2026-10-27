@@ -22,6 +22,10 @@ jobs:
             --archives qtbase qtsvg qttools qttranslations qtdeclarative -O .qt
       - name: Verify Dock window lifecycle
         run: ./scripts/test-macos-dock.sh
+      - name: Verify native capture materials
+        env:
+          FLAMESHOTER_QT_ROOT: ${{ github.workspace }}/.qt/6.12.0/macos
+        run: ./scripts/test-macos-capture-material.sh
       - name: Import fixed release signing identity
         if: github.event_name != 'pull_request'
         env:

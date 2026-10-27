@@ -26,6 +26,9 @@
 #include <QFileDialog>
 #include <QGuiApplication>
 #include <QMessageBox>
+#if defined(Q_OS_MACOS)
+#include "platform/macos/nativeui.h"
+#endif
 #include <QMimeData>
 #include <QPointer>
 #include <QStandardPaths>
@@ -140,6 +143,9 @@ bool saveToFilesystem(const QPixmap& capture,
 QString ShowSaveFileDialog(const QString& title, const QString& directory)
 {
     QFileDialog dialog(nullptr, title, directory);
+#if defined(Q_OS_MACOS)
+    dialog.setOption(QFileDialog::DontUseNativeDialog, false);
+#endif
     dialog.setAcceptMode(QFileDialog::AcceptSave);
 
     // Build string list of supported image formats
@@ -423,10 +429,14 @@ bool saveToFilesystemGUI(const QPixmap& capture)
                 msg += ": " + file.errorString();
             }
 
+#if defined(Q_OS_MACOS)
+            MacUI::showWarning(QObject::tr("Save Error"), msg);
+#else
             QMessageBox saveErrBox(
               QMessageBox::Warning, QObject::tr("Save Error"), msg);
             saveErrBox.setWindowIcon(QIcon(GlobalValues::iconPath()));
             saveErrBox.exec();
+#endif
         }
     }
 

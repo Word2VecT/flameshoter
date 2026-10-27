@@ -6,13 +6,17 @@
 #include "widgets/capture/capturetoolbutton.h"
 
 #include <QApplication>
+#include <QDir>
 #include <QLocale>
 #include <QPointer>
 #include <QProcess>
+#include <QPixmap>
+#include <QTemporaryFile>
 #include <QTimer>
 #include <QWidget>
 #import <AppKit/AppKit.h>
 #import <CoreGraphics/CoreGraphics.h>
+#import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
 #import <objc/runtime.h>
 
 namespace {
@@ -130,7 +134,7 @@ NSButton* iconButton(NSString* title, NSString* symbol, void (^block)(id))
     [b.heightAnchor constraintEqualToConstant:34].active = YES;
     return b;
 }
-NSGlassEffectView* glass(NSView* content)
+NSGlassEffectView* glass(NSView* content, bool interactive = true)
 {
     auto g = [NSGlassEffectView new];
     g.style = NSGlassEffectViewStyleRegular;
@@ -138,7 +142,7 @@ NSGlassEffectView* glass(NSView* content)
     g.contentView = padded(content, 8);
     g.translatesAutoresizingMaskIntoConstraints = NO;
 #if __MAC_OS_X_VERSION_MAX_ALLOWED >= 270000
-    if (@available(macOS 27.0, *)) g.effectIsInteractive = YES;
+    if (@available(macOS 27.0, *)) g.effectIsInteractive = interactive;
 #endif
     return g;
 }
@@ -315,7 +319,7 @@ MacCaptureBar::MacCaptureBar(QWidget* host,
         [detail.widthAnchor constraintEqualToConstant:400].active = YES;
         [title.widthAnchor constraintEqualToConstant:400].active = YES;
         auto hints = stack(@[title, detail], NSUserInterfaceLayoutOrientationVertical, 8);
-        d->hint = glass(hints);
+        d->hint = glass(hints, false);
         d->hint.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
         QTimer::singleShot(0, this, [this]() {
             if (d->visible || !d->selection.isEmpty() || !d->host) return;
@@ -385,9 +389,8 @@ MacCaptureBar::MacCaptureBar(QWidget* host,
         });
         swatch.toolTip = ns(preset.name());
         [swatch setAccessibilityLabel:ns(preset.name())];
-        swatch.image = [NSImage imageWithSize:NSMakeSize(18,18) flipped:NO drawingHandler:^BOOL(NSRect rect) {
-            [nativeColor(preset) setFill]; [[NSBezierPath bezierPathWithOvalInRect:NSInsetRect(rect, 1, 1)] fill]; return YES;
-        }];
+        swatch.image = [NSImage imageWithSystemSymbolName:@"circle.fill" accessibilityDescription:nil];
+        swatch.contentTintColor = nativeColor(preset);
         swatch.imagePosition = NSImageOnly;
         [presets addObject:swatch];
     }
@@ -609,6 +612,53 @@ bool MacUI::confirmDiscard()
     [alert addButtonWithTitle:L(@"Keep Editing", @"继续编辑")];
     [alert addButtonWithTitle:L(@"Discard", @"丢弃")];
     return [alert runModal] == NSAlertSecondButtonReturn;
+}
+
+void MacUI::showWarning(const QString& title, const QString& message)
+{
+    auto alert = [NSAlert new];
+    alert.alertStyle = NSAlertStyleWarning;
+    alert.messageText = ns(title);
+    alert.informativeText = ns(message);
+    [alert addButtonWithTitle:L(@"OK", @"好")];
+    [alert runModal];
+}
+
+void MacUI::useSystemWindowShadow(QWidget* widget)
+{
+    NSView* view = (__bridge NSView*)reinterpret_cast<void*>(widget->winId());
+    view.window.hasShadow = YES;
+}
+
+void MacUI::openWith(const QPixmap& capture)
+{
+    auto panel = [NSOpenPanel openPanel];
+    panel.title = L(@"Open capture with an application", @"使用其他应用打开截图");
+    panel.prompt = L(@"Open", @"打开");
+    panel.allowedContentTypes = @[UTTypeApplicationBundle];
+    panel.directoryURL = [NSURL fileURLWithPath:@"/Applications" isDirectory:YES];
+    panel.canChooseDirectories = NO;
+    QTemporaryFile file(QDir::tempPath() + "/flameshoter-XXXXXX.png");
+    do {
+        if ([panel runModal] != NSModalResponseOK) return;
+        if (file.fileName().isEmpty()) {
+            if (!file.open() || !capture.save(&file, "PNG")) {
+                showWarning(qs(L(@"Unable to open capture", @"无法打开截图")),  file.errorString());
+                return;
+            }
+            file.close();
+            // The selected application may read the image after this dialog closes.
+            file.setAutoRemove(false);
+        }
+        NSURL* image = [NSURL fileURLWithPath:ns(file.fileName())];
+        [NSWorkspace.sharedWorkspace openURLs:@[image] withApplicationAtURL:panel.URL
+            configuration:[NSWorkspaceOpenConfiguration configuration]
+            completionHandler:^(NSRunningApplication*, NSError* error) {
+                if (error) [NSOperationQueue.mainQueue addOperationWithBlock:^{
+                    showWarning(qs(L(@"Unable to open capture", @"无法打开截图")),  qs(error.localizedDescription));
+                }];
+            }];
+    } while (ConfigHandler().keepOpenAppLauncher());
 }
 
 void MacCaptureBar::showInspector()

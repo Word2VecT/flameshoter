@@ -11,6 +11,7 @@
 
 class QWidget;
 class CaptureToolButton;
+class QPixmap;
 
 // The AppKit surface forwards actions into the unmodified Flameshot tools.
 class MacCaptureBar : public QObject
@@ -56,4 +57,7 @@ void showLauncher();
 void showDemo();
 void showAbout();
 bool confirmDiscard();
+void showWarning(const QString& title, const QString& message);
+void openWith(const QPixmap& capture);
+void useSystemWindowShadow(QWidget* widget);
 }

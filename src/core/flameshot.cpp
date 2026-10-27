@@ -129,8 +129,13 @@ CaptureWidget* Flameshot::gui(const CaptureRequest& req)
             QThread::msleep(delay);
         }
         if (0 == timeout) {
+#if defined(Q_OS_MACOS)
+            MacUI::showWarning(tr("Error"),
+                               tr("Unable to close active modal widgets"));
+#else
             QMessageBox::warning(
               nullptr, tr("Error"), tr("Unable to close active modal widgets"));
+#endif
             return nullptr;
         }
 

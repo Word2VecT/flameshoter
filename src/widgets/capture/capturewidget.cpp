@@ -39,6 +39,10 @@
 #include <QShortcut>
 #include <QWindow>
 
+#if defined(Q_OS_MACOS)
+#include "platform/macos/capturematerial.h"
+#endif
+
 #if !defined(DISABLE_UPDATE_CHECKER)
 #include "widgets/updatenotificationwidget.h"
 #endif
@@ -243,6 +247,9 @@ CaptureWidget::CaptureWidget(const CaptureRequest& req,
         areas.append(rect());
     }
 
+#if defined(Q_OS_MACOS)
+    m_captureMaterial = std::make_unique<MacCaptureMaterial>(this, m_opacity);
+#endif
     m_buttonHandler = new ButtonHandler(this);
     m_buttonHandler->updateScreenRegions(areas);
     m_buttonHandler->hide();
@@ -588,6 +595,7 @@ bool CaptureWidget::commitCurrentTool()
 
 void CaptureWidget::initQuitPrompt()
 {
+#if !defined(Q_OS_MACOS)
     m_quitPrompt = new QMessageBox;
     makeChild(m_quitPrompt);
 
@@ -619,6 +627,7 @@ void CaptureWidget::initQuitPrompt()
     QObject::connect(check, &QCheckBox::clicked, [](bool checked) {
         ConfigHandler().setShowQuitPrompt(!checked);
     });
+#endif
 }
 
 bool CaptureWidget::promptQuit()
@@ -758,6 +767,10 @@ void CaptureWidget::paintEvent(QPaintEvent* paintEvent)
         save = true;
     }
     painter.drawPixmap(0, 0, m_context.screenshot);
+#if defined(Q_OS_MACOS)
+    if (!m_xywhDisplay)
+        m_captureMaterial->setSelectionInfo({}, {});
+#endif
     if (m_selection && m_xywhDisplay) {
         const QRect& selection = m_selection->geometry().normalized();
         const qreal scale = m_context.screenshot.devicePixelRatio();
@@ -804,6 +817,10 @@ void CaptureWidget::paintEvent(QPaintEvent* paintEvent)
                   selection.top() + (selection.height() - xybox.height()) / 2;
         }
 
+#if defined(Q_OS_MACOS)
+        m_captureMaterial->setSelectionInfo(
+          xy, QRect(x0 + 6, y0 + 4, xybox.width(), xybox.height()));
+#else
         QColor uicolor = ConfigHandler().uiColor();
         uicolor.setAlpha(200);
         painter.fillRect(
@@ -816,6 +833,7 @@ void CaptureWidget::paintEvent(QPaintEvent* paintEvent)
                          xybox.height(),
                          Qt::AlignVCenter | Qt::AlignHCenter,
                          xy);
+#endif
     }
 
     if (m_displayGrid) {
@@ -850,8 +868,10 @@ void CaptureWidget::paintEvent(QPaintEvent* paintEvent)
     }
     if (save)
         painter.restore();
-    // draw inactive region
+    // AppKit owns the capture materials on macOS.
+#if !defined(Q_OS_MACOS)
     drawInactiveRegion(&painter);
+#endif
 
     if (!isActiveWindow()) {
         drawErrorMessage(
@@ -865,6 +885,11 @@ void CaptureWidget::paintEvent(QPaintEvent* paintEvent)
                             "gui` again to apply it."),
                          &painter);
     }
+#if defined(Q_OS_MACOS)
+    else {
+        m_captureMaterial->setErrorMessage({});
+    }
+#endif
 }
 
 void CaptureWidget::showColorPicker(const QPoint& pos)
@@ -1255,6 +1280,12 @@ void CaptureWidget::resizeEvent(QResizeEvent* e)
 {
     QWidget::resizeEvent(e);
     m_context.widgetOffset = mapToGlobal(QPoint(0, 0));
+#if defined(Q_OS_MACOS)
+    if (m_captureMaterial && m_selection) {
+        m_captureMaterial->setSelection(m_selection->geometry(),
+                                        m_selection->isVisible());
+    }
+#endif
     if (!m_context.fullscreen) {
         m_panel->setFixedHeight(height());
         m_buttonHandler->updateScreenRegions(rect());
@@ -1447,6 +1478,10 @@ void CaptureWidget::initSelection()
         QRect constrainedToCaptureArea =
           m_selection->geometry().intersected(rect());
         m_context.selection = extendedRect(constrainedToCaptureArea);
+#if defined(Q_OS_MACOS)
+        m_captureMaterial->setSelection(constrainedToCaptureArea,
+                                        m_selection->isVisible());
+#endif
 
         m_buttonHandler->hide();
         updateCursor();
@@ -1468,6 +1503,11 @@ void CaptureWidget::initSelection()
         }
     });
     connect(m_selection, &SelectionWidget::visibilityChanged, this, [this]() {
+#if defined(Q_OS_MACOS)
+        m_captureMaterial->setSelection(m_selection->geometry(),
+                                        m_selection->isVisible());
+        update();
+#endif
         if (!m_selection->isVisible() && !m_helpMessage.isEmpty()) {
             OverlayMessage::push(m_helpMessage);
         }
@@ -2188,6 +2228,10 @@ QRect CaptureWidget::paddedUpdateRect(const QRect& r) const
 
 void CaptureWidget::drawErrorMessage(const QString& msg, QPainter* painter)
 {
+#if defined(Q_OS_MACOS)
+    Q_UNUSED(painter)
+    m_captureMaterial->setErrorMessage(msg);
+#else
     auto textRect = painter->fontMetrics().boundingRect(msg);
     int w = textRect.width(), h = textRect.height();
     textRect = {
@@ -2200,6 +2244,7 @@ void CaptureWidget::drawErrorMessage(const QString& msg, QPainter* painter)
         painter->setPen(textColor);
         painter->drawText(textRect, msg);
     }
+#endif
 }
 
 void CaptureWidget::drawInactiveRegion(QPainter* painter)

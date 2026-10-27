@@ -383,6 +383,7 @@ void SelectionWidget::parentMouseMoveEvent(QMouseEvent* e)
 
 void SelectionWidget::paintEvent(QPaintEvent*)
 {
+#if !defined(Q_OS_MACOS)
     QPainter p(this);
     if (!p.isActive()) {
         return;
@@ -394,6 +395,7 @@ void SelectionWidget::paintEvent(QPaintEvent*)
     for (auto rectangle : handlerAreas()) {
         p.drawEllipse(rectangle);
     }
+#endif
 }
 
 void SelectionWidget::resizeEvent(QResizeEvent*)
