@@ -124,6 +124,17 @@ def main():
         audit(app)
         sign(app, args.identity, args.keychain, args.hardened_runtime)
         run(executable, '--version')
+        link = stage / 'flameshoter'
+        link.symlink_to(executable)
+        reported = subprocess.check_output([str(link), '--version'], text=True)
+        if f'Flameshoter v{version} ({revision})' not in reported:
+            raise RuntimeError('The Homebrew-style CLI link did not recognize the app bundle')
+        environment = dict(os.environ, FLAMESHOTER_TEST_IMAGE=str(resources / 'demo.png'),
+                           FLAMESHOTER_TEST_CONFIG=str(stage / 'test-settings'))
+        capture = subprocess.check_output([str(link), 'full', '--raw'], env=environment, timeout=30)
+        if not capture.startswith(b'\x89PNG\r\n\x1a\n'):
+            raise RuntimeError('The standalone CLI did not return a PNG')
+        print('Homebrew-style CLI link and standalone fixture capture passed')
         args.out.parent.mkdir(parents=True, exist_ok=True)
         run('/usr/bin/ditto', '-c', '-k', '--norsrc', '--noextattr', '--keepParent', app, args.out)
         print(f'Package: {args.out.resolve()}')

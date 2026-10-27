@@ -1,4 +1,6 @@
-# Flameshoter 0.2.0
+# Flameshoter 0.2.1
+
+Includes a Homebrew command-line startup fix: symbolic links resolve to the app executable before Foundation initializes, preserving the bundle identity, resources and version.
 
 Flameshoter is now a native macOS app built with Swift / AppKit. Qt, CMake and all third-party runtime libraries have been removed.
 
