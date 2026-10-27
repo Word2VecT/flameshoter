@@ -30,12 +30,16 @@ def macho_files(root):
                 yield path
 
 
-def sign(app, identity):
+def sign(app, identity, keychain=None, hardened_runtime=False):
     # Signing inside a cloud-synced Documents folder can reintroduce FinderInfo.
     run('/usr/bin/xattr', '-cr', app)
     flags = ['--force', '--sign', identity]
-    if identity != '-':
+    if keychain:
+        flags += ['--keychain', str(keychain)]
+    if hardened_runtime:
         flags += ['--options', 'runtime', '--timestamp']
+    else:
+        flags += ['--timestamp=none']
     for path in macho_files(app):
         run('/usr/bin/codesign', *flags, path, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     for framework in sorted(app.rglob('*.framework'), key=lambda p: len(p.parts), reverse=True):
@@ -74,6 +78,8 @@ def main():
     parser.add_argument('--out', required=True, type=Path)
     parser.add_argument('--icon-assets', type=Path)
     parser.add_argument('--identity', default=os.environ.get('MACOS_SIGN_IDENTITY', '-'))
+    parser.add_argument('--keychain', default=os.environ.get('MACOS_SIGN_KEYCHAIN'))
+    parser.add_argument('--hardened-runtime', action='store_true')
     parser.add_argument('--keep-stage', action='store_true')
     args = parser.parse_args()
     source = Path(__file__).resolve().parents[1]
@@ -122,7 +128,7 @@ def main():
                     install_id = '@loader_path/' + binary.name
                 run('/usr/bin/install_name_tool', '-id', install_id, binary)
         audit(app)
-        sign(app, args.identity)
+        sign(app, args.identity, args.keychain, args.hardened_runtime)
         run(app / "Contents/MacOS/Flameshoter", "--version")
         args.out.parent.mkdir(parents=True, exist_ok=True)
         run('/usr/bin/ditto', '-c', '-k', '--norsrc', '--noextattr', '--keepParent', app, args.out)

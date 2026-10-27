@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.22)
 # cmake_policy(SET CMP0076 OLD)
 
-set(FLAMESHOT_VERSION 0.1.1)
+set(FLAMESHOT_VERSION 0.1.2)
 
 # Flameshot-org
 set(GIT_API_URL "https://api.github.com/repos/Word2VecT/flameshoter/releases/latest")

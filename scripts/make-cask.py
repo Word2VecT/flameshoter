@@ -33,7 +33,8 @@ a.out.write_text('''cask "flameshoter" do
 
   caveats <<~EOS
     Allow Screen Recording for Flameshoter when first taking a screenshot.
-    This initial release is ad hoc signed and is not notarized by Apple.
+    Official releases use a fixed self-signed certificate and are not notarized by Apple.
+    Upgrading from an older ad hoc signed release requires granting Screen Recording again once.
     If macOS blocks the first launch, use System Settings > Privacy & Security > Open Anyway.
   EOS
 end

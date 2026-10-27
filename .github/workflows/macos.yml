@@ -22,6 +22,12 @@ jobs:
             --archives qtbase qtsvg qttools qttranslations qtdeclarative -O .qt
       - name: Verify Dock window lifecycle
         run: ./scripts/test-macos-dock.sh
+      - name: Import fixed release signing identity
+        if: github.event_name != 'pull_request'
+        env:
+          MACOS_SIGNING_P12: ${{ secrets.MACOS_SIGNING_P12 }}
+          MACOS_SIGNING_PASSWORD: ${{ secrets.MACOS_SIGNING_PASSWORD }}
+        run: python3 scripts/import-macos-signing.py
       - name: Build and verify portable app
         env:
           FLAMESHOTER_QT_ROOT: ${{ github.workspace }}/.qt/6.12.0/macos
@@ -32,6 +38,15 @@ jobs:
           python3 scripts/make-cask.py --archive "dist/Flameshoter-$VERSION-macos-arm64.zip" \
             --version "$VERSION" --out dist/Casks/flameshoter.rb
           (cd dist && shasum -a 256 "Flameshoter-$VERSION-macos-arm64.zip" > SHA256SUMS)
+      - name: Remove signing keychain
+        if: always() && env.MACOS_SIGN_KEYCHAIN != ''
+        run: security delete-keychain "$MACOS_SIGN_KEYCHAIN"
+      - name: Verify release signing identity without the signing keychain
+        if: github.event_name != 'pull_request'
+        run: |
+          VERSION=$(sed -n 's/^set(FLAMESHOT_VERSION \([0-9.]*\)).*/\1/p' CMakeLists.txt)
+          ditto -x -k "dist/Flameshoter-$VERSION-macos-arm64.zip" "$RUNNER_TEMP/signature-audit"
+          python3 scripts/verify-macos-signature.py --app "$RUNNER_TEMP/signature-audit/Flameshoter.app"
       - uses: actions/upload-artifact@v7
         with:
           name: flameshoter-macos-arm64

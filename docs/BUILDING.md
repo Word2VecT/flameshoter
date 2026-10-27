@@ -1,6 +1,8 @@
 # Building and releasing
 
-Release tags promote the successful `master` build for the exact tagged commit. The release job checks `SHA256SUMS` and uploads those same bytes instead of recompiling or signing again. Test the candidate artifact before tagging; Homebrew will install that identical bundle. This preserves the tested code identity within a release. Ad hoc signatures still change across application updates; retaining TCC authorization across versions requires a stable Developer ID identity.
+Release tags promote the successful `master` build for the exact tagged commit. The release job checks `SHA256SUMS` and uploads those same bytes instead of recompiling or signing again. Test the candidate artifact before tagging; Homebrew will install that identical bundle.
+
+Starting with 0.1.2, master builds use one fixed self-signed release certificate. The designated requirement binds the bundle identifier to that certificate, rather than to a build's changing code hash. This lets macOS recognize signed updates as the same application. Migrating from the previous ad hoc signature requires granting Screen Recording once again. This is separate from Gatekeeper trust: the releases are not Apple notarized and may still require Open Anyway on first launch.
 
 The macOS UI requires a macOS 26+ SDK; releases use the Xcode 27 toolchain with a macOS 26 deployment target. Current release binaries are arm64. Xcode is required to compile the layered app icon; Command Line Tools alone can compile the application and use the checked-in Icon Composer PNG/ICNS preview while developing.
 
@@ -36,7 +38,20 @@ python3 scripts/package-macos.py --app build/src/Flameshoter.app \
   --out dist/Flameshoter-0.1.0-macos-arm64.zip
 ```
 
-`MACOS_SIGN_IDENTITY` optionally selects a Developer ID identity; otherwise the script uses an ad hoc signature. A Developer ID signature alone is not notarization. Submit the finished archive with Apple's notarytool and staple the result before publishing if notarized distribution is required. No credentials are committed or embedded in the app.
+`MACOS_SIGN_IDENTITY` selects the signing certificate by SHA-1 fingerprint; `MACOS_SIGN_KEYCHAIN` optionally supplies its keychain. Without an identity, local development and pull-request builds use ad hoc signing and do not retain authorization across builds. Self-signed builds use no timestamp or hardened runtime. For future Developer ID distribution, pass `--hardened-runtime` to package-macos.py to enable the hardened runtime and secure timestamp, then submit and staple with Apple's notarization tools.
+
+Only the public certificate is committed as `packaging/macos/release-signing.pem`. The private identity is stored in a dedicated local keychain and an encrypted PKCS#12 backup outside the repository. GitHub Actions uses repository secrets `MACOS_SIGNING_P12` (base64-encoded PKCS#12) and `MACOS_SIGNING_PASSWORD`. Keep the same identity for every release; generating a new certificate changes the application's permission identity. Do not commit or distribute the private key. End users do not import or trust the certificate themselves.
+
+Master builds fail when signing credentials are missing. The workflow imports them into an isolated temporary keychain, verifies that the packaged app has the pinned certificate and designated requirement, then deletes the keychain before uploading the artifact. Pull-request builds never import the release key. No Gatekeeper exceptions, trust-store changes or quarantine removal are part of the tap.
+
+Verify two different packaged builds before testing an upgrade:
+
+```sh
+python3 scripts/verify-macos-signature.py --app /path/to/new/Flameshoter.app \
+  --previous /path/to/previous/Flameshoter.app
+```
+
+This checks the signatures, pinned certificate, distinct code hashes and mutually compatible designated requirements. For a runtime check, install the first build at `/Applications/Flameshoter.app`, grant Screen Recording and verify a real capture. Quit the whole process, replace it with the second build at the same path, and capture again without changing privacy settings. Do not use the image fixture for this check. A successful signing check alone is not evidence of actual TCC permission retention.
 
 ## Release and tap
 
