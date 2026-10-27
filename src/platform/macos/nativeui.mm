@@ -650,11 +650,11 @@ while /bin/kill -0 "$1" 2>/dev/null; do
     if [ "$i" -ge 100 ]; then exit 1; fi
     /bin/sleep 0.2
 done
-exec /usr/bin/open -n -a "$2" --args "$3"
+exec /usr/bin/open -n -a "$2"
 )RELAUNCH");
     if (!QProcess::startDetached("/bin/sh", {"-c", script, "flameshoter-relaunch",
             QString::number(QCoreApplication::applicationPid()),
-            qs(NSBundle.mainBundle.bundlePath), "launcher"})) {
+            qs(NSBundle.mainBundle.bundlePath)})) {
         auto alert = [NSAlert new];
         alert.messageText = L(@"Unable to restart Flameshoter", @"无法重新启动 Flameshoter");
         alert.informativeText = L(@"Quit Flameshoter from its menu, then open it from Applications.", @"请从菜单退出 Flameshoter，再从“应用程序”重新打开。");

@@ -492,7 +492,9 @@ void FlameshotDaemon::messageReceivedFromSecondaryInstance(
     stream >> methodCall;
     // qDebug() << "Method:" << methodCall;
 
-    if (methodCall == QStringLiteral("attachPin")) {
+    if (methodCall == QStringLiteral("showLauncher")) {
+        Flameshot::instance()->launcher();
+    } else if (methodCall == QStringLiteral("attachPin")) {
         QPixmap capture;
         QRect geometry;
         readPin(stream, capture, geometry);

@@ -28,6 +28,7 @@
 #endif
 
 #include <QApplication>
+#include <QDataStream>
 #include <QDir>
 #include <QLibraryInfo>
 #include <QNetworkProxyFactory>
@@ -241,8 +242,14 @@ int main(int argc, char* argv[])
     if (!testConfig.isEmpty()) QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, testConfig);
     QNetworkProxyFactory::setUseSystemConfiguration(true);
 
-    // no arguments, just launch Flameshot
-    if (argc == 1) {
+    // The macOS launcher is a resident application, including its menu-bar
+    // service and IPC endpoint. Reuse normal startup instead of the CLI-only UI.
+    bool launchApplication = argc == 1;
+#if defined(Q_OS_MACOS)
+    launchApplication = launchApplication ||
+        (argc == 2 && QString::fromLocal8Bit(argv[1]) == QStringLiteral("launcher"));
+#endif
+    if (launchApplication) {
         QApplication app(argc, argv);
         configureTranslation(translator, qtTranslator);
 
@@ -256,6 +263,12 @@ int main(int argc, char* argv[])
 
         if (!kdsa.isPrimaryInstance() &&
             !ConfigHandler().allowMultipleGuiInstances()) {
+#if defined(Q_OS_MACOS)
+            QByteArray request;
+            QDataStream stream(&request, QIODevice::WriteOnly);
+            stream << QStringLiteral("showLauncher");
+            kdsa.sendMessage(request);
+#endif
             return 0; // Quit
         }
 #endif
