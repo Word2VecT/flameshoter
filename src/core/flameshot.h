@@ -9,7 +9,6 @@
 #include <QObject>
 #include <QPointer>
 #include <QVersionNumber>
-#include <QWindow>
 
 class ConfigWindow;
 class InfoWindow;
@@ -92,15 +91,6 @@ private:
     QPointer<InfoWindow> m_infoWindow;
     QPointer<CaptureLauncher> m_launcherWindow;
     QPointer<ConfigWindow> m_configWindow;
-
-#if defined(Q_OS_MACOS)
-public:
-    void showDockIcon(QWidget* window);
-
-private:
-    void onWindowVisibilityChanged(QWindow::Visibility newVisibility);
-    int m_dockIconVisibleCount = 0;
-#endif
 
 #if (defined(Q_OS_MACOS) || defined(Q_OS_WIN))
     QHotkey* m_HotkeyScreenshotCapture;

@@ -489,7 +489,7 @@ endif ()
 
 # Flameshoter's macOS controls use the system Liquid Glass implementation.
 if(APPLE)
-    target_sources(flameshot PRIVATE platform/macos/nativeui.mm platform/macos/preferences.mm)
-    set_source_files_properties(platform/macos/nativeui.mm platform/macos/preferences.mm PROPERTIES COMPILE_OPTIONS "-fobjc-arc")
+    target_sources(flameshot PRIVATE platform/macos/nativeui.mm platform/macos/preferences.mm platform/macos/dockicon.mm)
+    set_source_files_properties(platform/macos/nativeui.mm platform/macos/preferences.mm platform/macos/dockicon.mm PROPERTIES COMPILE_OPTIONS "-fobjc-arc")
     target_link_libraries(flameshot "-framework AppKit" "-framework ServiceManagement")
 endif()

@@ -36,6 +36,7 @@
 #include <QTimer>
 #include <QTranslator>
 #if defined(Q_OS_MACOS)
+#include "platform/macos/dockicon.h"
 #include "platform/macos/nativeui.h"
 #endif
 
@@ -201,6 +202,9 @@ void configureTranslation(QTranslator& translator, QTranslator& qtTranslator)
 void configureApp(bool gui, QTranslator& translator, QTranslator& qtTranslator)
 {
     if (gui) {
+#if defined(Q_OS_MACOS)
+        MacUI::installDockIconPolicy();
+#endif
 #if defined(Q_OS_WIN) && QT_VERSION >= QT_VERSION_CHECK(6, 5, 0)
         QApplication::setStyle("Fusion"); // Supports dark scheme on Win 10/11
 #elif defined(Q_OS_MACOS)

@@ -20,6 +20,8 @@ jobs:
           .venv/bin/pip install aqtinstall==3.3.0
           .venv/bin/python -m aqt install-qt mac desktop 6.12.0 clang_64 \
             --archives qtbase qtsvg qttools qttranslations qtdeclarative -O .qt
+      - name: Verify Dock window lifecycle
+        run: ./scripts/test-macos-dock.sh
       - name: Build and verify portable app
         env:
           FLAMESHOTER_QT_ROOT: ${{ github.workspace }}/.qt/6.12.0/macos
