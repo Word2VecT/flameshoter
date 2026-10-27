@@ -90,3 +90,4 @@ dist/
 
 __pycache__/
 *.pyc
+!scripts/build-macos.sh

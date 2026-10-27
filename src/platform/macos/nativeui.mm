@@ -447,14 +447,17 @@ void MacCaptureBar::setSelection(const QRect& selection)
     if (!d->widget) return;
     auto host = d->host;
     const CGFloat width = NSWidth(host.bounds), height = NSHeight(host.bounds);
-    NSSize size = d->root.contentView.fittingSize;
-    CGFloat scale = qMin(1.0, (width - 24.0) / qMax(1.0, size.width));
-    // On small displays use two rows, preserving normal control hit targets.
+    // Measure the horizontal layout each time so a narrow display does not
+    // alternate between one and two rows as the selection moves.
     auto groups = (NSStackView*)d->root.contentView;
-    groups.orientation = scale < 1 ? NSUserInterfaceLayoutOrientationVertical
-                                  : NSUserInterfaceLayoutOrientationHorizontal;
-    groups.alignment = NSLayoutAttributeCenterX;
-    if (scale == 1) groups.alignment = NSLayoutAttributeCenterY;
+    groups.orientation = NSUserInterfaceLayoutOrientationHorizontal;
+    groups.alignment = NSLayoutAttributeCenterY;
+    [groups layoutSubtreeIfNeeded];
+    NSSize size = groups.fittingSize;
+    if (size.width > width - 24) {
+        groups.orientation = NSUserInterfaceLayoutOrientationVertical;
+        groups.alignment = NSLayoutAttributeCenterX;
+    }
     [groups layoutSubtreeIfNeeded];
     size = groups.fittingSize;
     CGFloat x = qBound(12.0, selection.center().x() - size.width / 2, qMax(12.0, width - size.width - 12));

@@ -28,7 +28,7 @@ jobs:
           if [[ "$GITHUB_REF" == refs/tags/* ]]; then test "$GITHUB_REF_NAME" = "v$VERSION"; fi
           python3 scripts/make-cask.py --archive "dist/Flameshoter-$VERSION-macos-arm64.zip" \
             --version "$VERSION" --out dist/Casks/flameshoter.rb
-          shasum -a 256 "dist/Flameshoter-$VERSION-macos-arm64.zip" > dist/SHA256SUMS
+          (cd dist && shasum -a 256 "Flameshoter-$VERSION-macos-arm64.zip" > SHA256SUMS)
       - uses: actions/upload-artifact@v7
         with:
           name: flameshoter-macos-arm64
