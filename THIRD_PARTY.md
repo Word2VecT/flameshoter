@@ -1,16 +1,9 @@
-# Third-party software and provenance
+# Provenance and platform components
 
-Flameshoter is a GPL-3.0-or-later derivative of [Flameshot](https://github.com/flameshot-org/flameshot), initially based on commit `da34dcb1b296bd2e3bc589767abbe788084215ae`. Copyright and SPDX notices in upstream files are preserved. The three flame vector paths in the Icon Composer document are derived from Flameshot's `data/img/app/org.flameshot.Flameshot.svg` under the same project license. Apple Icon Composer and Apple's asset compiler render the icon materials; the generated-image experiment is not used in the application.
+Flameshoter is a GPL-3.0-or-later derivative of [Flameshot](https://github.com/flameshot-org/flameshot), initially based on commit `da34dcb1b296bd2e3bc589767abbe788084215ae`. Flameshot was created by Alejandro Sirgo Rica and its contributors. The three flame vector paths in the Icon Composer document derive from Flameshot's `data/img/app/org.flameshot.Flameshot.svg` under the Free Art License 1.3. The original artwork is credited to the Flameshot project and contributors; its source is preserved as packaging/macos/icon-layers/upstream-logo.svg. Flameshoter's 2026 adaptation removes the purple backing and separates the flames into Apple Icon Composer material layers. The adapted logo remains under FAL 1.3; its license is included in licenses/FlameshotLogo-FAL-1.3.txt.
 
-The release source is available at https://github.com/Word2VecT/flameshoter, including its build scripts and dependency revisions.
+Version 0.2.0 replaces the C++ / Qt implementation with Swift and public macOS frameworks. Qt, Qt Color Widgets, KDSingleApplication and QHotkey are no longer built, linked or distributed. Earlier source and notices are recoverable from Git history, including commit `3ddd2b1` before the native migration.
 
-| Component | Version / revision | License | Source |
-| --- | --- | --- | --- |
-| Qt | 6.12.0 | LGPL-3.0 / GPL-3.0, as applicable | https://download.qt.io/official_releases/qt/6.12/6.12.0/submodules/ |
-| Qt Color Widgets | 5d52e907e50dc88cf969b41cea44665ff6c475b1 | LGPL-3.0 | https://gitlab.com/mattbas/Qt-Color-Widgets |
-| KDSingleApplication | 1.2.1 | MIT | https://github.com/KDAB/KDSingleApplication |
-| QHotkey | d7063877c14d5ae2b489dc70bbe02e76a43bf38b | BSD-3-Clause | https://github.com/flameshot-org/QHotkey |
+The native application has no external Swift packages or bundled third-party frameworks. It uses Apple AppKit, ScreenCaptureKit, Core Graphics, Core Image, ImageIO, Carbon HotKey, ServiceManagement and UserNotifications. Apple frameworks, SF Symbols, Icon Composer and the asset compiler remain governed by Apple's terms; development tools are not redistributed with the application.
 
-Qt is dynamically linked. The other components are built from the pinned source revisions declared in CMakeLists.txt. License texts are included in `LICENSE` and `licenses/`, and copied into release bundles. Build from the public source with replacement libraries using the documented CMake workflow.
-
-Apple frameworks and SF Symbols remain governed by Apple's terms. Icon Composer itself is a build/design tool and is not redistributed with the application.
+The complete release source and build scripts are available at https://github.com/Word2VecT/flameshoter. See LICENSE for GPL-3.0-or-later terms.

@@ -1,20 +1,9 @@
-name: Feature Request
-description: Got an idea for a feature that can make Flameshot even better? Propose your suggestion here!
-labels: ["Enhancement"]
+name: Feature request / 功能建议
+description: Suggest an improvement to Flameshoter / 提出改进建议
 body:
-- type: markdown
-  attributes:
-    value: |
-      1. Please write in English, this is the language all maintainers can speak and write.
-      2. Please only use this form to submit feature request and **not** bugs or questions.
-      3. Please take a moment to check that your feature hasn't already been suggested.
-      4. One picture worth a thousand words. If you think you can convey the message better by a drawing or pictrure, consider adding one.
-- type: textarea
-  id: description
-  attributes:
-    label: Feature Description
-    placeholder: |
-      I think it would be great if ...
-  validations:
-    required: true
-
+  - type: textarea
+    id: description
+    attributes:
+      label: Problem and proposed behavior / 问题与建议行为
+    validations:
+      required: true

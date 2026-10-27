@@ -13,19 +13,8 @@ jobs:
     runs-on: xcode-27
     steps:
       - uses: actions/checkout@v6
-      - name: Install official Qt and build tools
-        run: |
-          brew install cmake ninja
-          python3 -m venv .venv
-          .venv/bin/pip install aqtinstall==3.3.0
-          .venv/bin/python -m aqt install-qt mac desktop 6.12.0 clang_64 \
-            --archives qtbase qtsvg qttools qttranslations qtdeclarative -O .qt
-      - name: Verify Dock window lifecycle
-        run: ./scripts/test-macos-dock.sh
-      - name: Verify native capture materials
-        env:
-          FLAMESHOTER_QT_ROOT: ${{ github.workspace }}/.qt/6.12.0/macos
-        run: ./scripts/test-macos-capture-material.sh
+      - name: Verify native editor and application behavior
+        run: ./scripts/test-native.sh
       - name: Import fixed release signing identity
         if: github.event_name != 'pull_request'
         env:
@@ -33,11 +22,9 @@ jobs:
           MACOS_SIGNING_PASSWORD: ${{ secrets.MACOS_SIGNING_PASSWORD }}
         run: python3 scripts/import-macos-signing.py
       - name: Build and verify portable app
-        env:
-          FLAMESHOTER_QT_ROOT: ${{ github.workspace }}/.qt/6.12.0/macos
         run: |
           ./scripts/build-macos.sh --package
-          VERSION=$(sed -n 's/^set(FLAMESHOT_VERSION \([0-9.]*\)).*/\1/p' CMakeLists.txt)
+          VERSION=$(cat VERSION)
           if [[ "$GITHUB_REF" == refs/tags/* ]]; then test "$GITHUB_REF_NAME" = "v$VERSION"; fi
           python3 scripts/make-cask.py --archive "dist/Flameshoter-$VERSION-macos-arm64.zip" \
             --version "$VERSION" --out dist/Casks/flameshoter.rb
@@ -48,7 +35,7 @@ jobs:
       - name: Verify release signing identity without the signing keychain
         if: github.event_name != 'pull_request'
         run: |
-          VERSION=$(sed -n 's/^set(FLAMESHOT_VERSION \([0-9.]*\)).*/\1/p' CMakeLists.txt)
+          VERSION=$(cat VERSION)
           ditto -x -k "dist/Flameshoter-$VERSION-macos-arm64.zip" "$RUNNER_TEMP/signature-audit"
           python3 scripts/verify-macos-signature.py --app "$RUNNER_TEMP/signature-audit/Flameshoter.app"
       - uses: actions/upload-artifact@v7
@@ -75,7 +62,7 @@ jobs:
             echo 'A successful master build of this exact commit is required before tagging a release.' >&2
             exit 1
           fi
-          VERSION=$(sed -n 's/^set(FLAMESHOT_VERSION \([0-9.]*\)).*/\1/p' CMakeLists.txt)
+          VERSION=$(cat VERSION)
           test "$GITHUB_REF_NAME" = "v$VERSION"
           gh run download "$SOURCE_RUN" -R "$GITHUB_REPOSITORY" -n flameshoter-macos-arm64 -D dist
           (cd dist && sha256sum --check SHA256SUMS)

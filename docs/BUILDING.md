@@ -4,38 +4,33 @@ Release tags promote the successful `master` build for the exact tagged commit. 
 
 Starting with 0.1.2, master builds use one fixed self-signed release certificate. The designated requirement binds the bundle identifier to that certificate, rather than to a build's changing code hash. This lets macOS recognize signed updates as the same application. Migrating from the previous ad hoc signature requires granting Screen Recording once again. This is separate from Gatekeeper trust: the releases are not Apple notarized and may still require Open Anyway on first launch.
 
-The macOS UI requires a macOS 26+ SDK; releases use the Xcode 27 toolchain with a macOS 26 deployment target. Current release binaries are arm64. Xcode is required to compile the layered app icon; Command Line Tools alone can compile the application and use the checked-in Icon Composer PNG/ICNS preview while developing.
+The macOS UI requires a macOS 26+ SDK; releases use the Xcode 27 toolchain with a macOS 26 deployment target. Current release binaries are arm64. Xcode is required to compile the layered app icon; Command Line Tools alone can compile the application and reuse compiled icon resources from a previous release while developing.
 
-## Dependencies
+## Build and test
 
-Use official Qt binaries for portable release packages. Some Homebrew dependency bottles may target the build machine's OS even when the app's deployment target is older; the packaging audit deliberately rejects those bundles.
+Install Swift 6.2 or newer with Apple's macOS 26+ SDK. The package contains no external dependencies. Qt, CMake, Ninja, aqt and Homebrew development libraries are not needed.
 
 ```sh
-python3 -m venv .venv
-.venv/bin/pip install aqtinstall==3.3.0
-.venv/bin/python -m aqt install-qt mac desktop 6.12.0 clang_64 \
-  --archives qtbase qtsvg qttools qttranslations qtdeclarative -O .qt
-export FLAMESHOTER_QT_ROOT="$PWD/.qt/6.12.0/macos"
-brew install cmake ninja
+./scripts/test-native.sh
 ./scripts/build-macos.sh
-```
-
-Qt Declarative is needed by Qt 6.12's lrelease build tool. The application itself does not use a QML UI. CMake fetches the three other dependencies at the revisions pinned in CMakeLists.txt.
-
-## Package
-
-```sh
 ./scripts/build-macos.sh --package
 ```
 
-The package script compiles Flameshoter.icon using Apple's actool, deploys Qt, includes Chinese catalogs and license notices, verifies runtime dependencies and OS minimums, signs nested code and the app, and executes the packaged CLI before creating a ZIP. Signing takes place outside cloud-synced source folders so Finder metadata cannot invalidate the signature.
+Swift caches and signing stages live outside cloud-synced Documents folders, which can add Finder metadata that invalidates code signatures. Override FLAMESHOTER_BUILD_DIR or FLAMESHOTER_TEST_BUILD_DIR when needed. FLAMESHOTER_CONFIGURATION selects the build configuration (default release).
 
-For local development without full Xcode, pass a directory containing Assets.car and Flameshoter.icns produced by the **Compile Liquid Glass icon** workflow:
+The package script assembles the native app, compiles Flameshoter.icon with Apple's actool, includes English and Chinese resources and GPL provenance, audits runtime dependencies and minimum OS, signs the app, verifies it and executes the packaged CLI before writing a ZIP.
+
+With Command Line Tools alone, reuse Assets.car and Flameshoter.icns from a previous official release or the **Compile Liquid Glass icon** workflow:
 
 ```sh
-python3 scripts/package-macos.py --app build/src/Flameshoter.app \
-  --qt "$FLAMESHOTER_QT_ROOT" --icon-assets /path/to/icon-resources \
-  --out dist/Flameshoter-0.1.0-macos-arm64.zip
+./scripts/build-macos.sh --package --icon-assets /path/to/icon-resources
+```
+
+Alternatively, package a specific compiled executable:
+
+```sh
+python3 scripts/package-macos.py --binary /path/to/Flameshoter \
+  --icon-assets /path/to/icon-resources --out dist/Flameshoter-native.zip
 ```
 
 `MACOS_SIGN_IDENTITY` selects the signing certificate by SHA-1 fingerprint; `MACOS_SIGN_KEYCHAIN` optionally supplies its keychain. Without an identity, local development and pull-request builds use ad hoc signing and do not retain authorization across builds. Self-signed builds use no timestamp or hardened runtime. For future Developer ID distribution, pass `--hardened-runtime` to package-macos.py to enable the hardened runtime and secure timestamp, then submit and staple with Apple's notarization tools.
@@ -55,10 +50,10 @@ This checks the signatures, pinned certificate, distinct code hashes and mutuall
 
 ## Release and tap
 
-The macOS workflow builds and audits every master push. A `v*` tag matching the CMake project version publishes the ZIP, SHA256 and generated Homebrew cask. Copy the generated Casks/flameshoter.rb into Word2VecT/homebrew-tap and commit it. The generated cask uses an exact release URL and checksum; it never uses `sha256 :no_check` or removes quarantine attributes.
+The macOS workflow builds and audits every master push. A `v*` tag matching VERSION publishes the ZIP, SHA256 and generated Homebrew cask. Copy the generated Casks/flameshoter.rb into Word2VecT/homebrew-tap and commit it. The generated cask uses an exact release URL and checksum; it never uses `sha256 :no_check` or removes quarantine attributes.
 
 ## Test fixtures
 
-`FLAMESHOTER_TEST_IMAGE=/absolute/path/to/fixture.png` replaces desktop capture with that image and avoids asking for Screen Recording access. `FLAMESHOTER_TEST_CONFIG=/absolute/path/to/config-root` isolates test preferences. These are opt-in developer fixtures; normal captures use the upstream screen grabber. Test with `tests/fixtures/capture.svg`, rendered to PNG, rather than private desktop content.
+`FLAMESHOTER_TEST_IMAGE=/absolute/path/to/fixture.png` replaces desktop capture with that image and avoids asking for Screen Recording access. `FLAMESHOTER_TEST_CONFIG=/absolute/path/to/config-root` isolates test preferences. These are opt-in developer fixtures; normal captures use ScreenCaptureKit. Test with `tests/fixtures/capture.svg`, rendered to PNG, rather than private desktop content.
 
-The package audit checks both architectures of bundled universal Qt libraries even though the application executable currently targets arm64. macOS 26 compatibility is checked through deployment metadata; a physical macOS 26 runtime should be included in release qualification in addition to tests on macOS 27.
+The audit rejects third-party framework bundles and non-system dynamic libraries. macOS 26 compatibility is checked through deployment metadata; a physical macOS 26 runtime should be included in release qualification in addition to tests on macOS 27.
