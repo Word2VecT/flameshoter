@@ -1,5 +1,7 @@
 # Building and releasing
 
+Release tags promote the successful `master` build for the exact tagged commit. The release job checks `SHA256SUMS` and uploads those same bytes instead of recompiling or signing again. Test the candidate artifact before tagging; Homebrew will install that identical bundle. This preserves the tested code identity within a release. Ad hoc signatures still change across application updates; retaining TCC authorization across versions requires a stable Developer ID identity.
+
 The macOS UI requires a macOS 26+ SDK; releases use the Xcode 27 toolchain with a macOS 26 deployment target. Current release binaries are arm64. Xcode is required to compile the layered app icon; Command Line Tools alone can compile the application and use the checked-in Icon Composer PNG/ICNS preview while developing.
 
 ## Dependencies
