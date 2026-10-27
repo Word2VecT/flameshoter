@@ -1,16 +1,21 @@
 cmake_minimum_required(VERSION 3.22)
 # cmake_policy(SET CMP0076 OLD)
 
-set(FLAMESHOT_VERSION 15.0.0)
+set(FLAMESHOT_VERSION 0.1.0)
 
 # Flameshot-org
-set(GIT_API_URL "https://api.github.com/repos/flameshot-org/flameshot/releases/latest")
+set(GIT_API_URL "https://api.github.com/repos/Word2VecT/flameshoter/releases/latest")
 
 project(
   flameshot
   VERSION ${FLAMESHOT_VERSION}
   LANGUAGES CXX)
-set(PROJECT_NAME_CAPITALIZED "Flameshot")
+set(PROJECT_NAME_CAPITALIZED "Flameshoter")
+if(APPLE)
+  enable_language(OBJCXX)
+  set(CMAKE_OBJCXX_STANDARD 20)
+  set(CMAKE_OBJCXX_STANDARD_REQUIRED ON)
+endif()
 
 include(FetchContent)
 #Must be set before fetching external content!
@@ -58,7 +63,7 @@ endif()
 
 # This can be read from ${PROJECT_NAME} after project() is called
 if(APPLE)
-  set(CMAKE_OSX_DEPLOYMENT_TARGET "10.15" CACHE STRING "Minimum OS X deployment version")
+  set(CMAKE_OSX_DEPLOYMENT_TARGET "26.0" CACHE STRING "Minimum OS X deployment version")
 endif()
 
 
@@ -73,7 +78,7 @@ if(WIN32)
   add_definitions(-DFLAMESHOT_VERSION_BUILD=1)
   add_definitions(-DFLAMESHOT_VERSION_STRING="${PROJECT_VERSION}")
 elseif(APPLE)
-  set(Qt6_DIR "$(brew --prefix qt6)/lib/cmake/Qt6/" CACHE PATH "directory where Qt6Config.cmake exists.")
+  # Qt is discovered through CMAKE_PREFIX_PATH or Qt6_DIR.
 endif()
 set(USE_PORTABLE_CONFIG
   ${DEFAULT_USE_PORTABLE_CONFIG}
@@ -89,7 +94,7 @@ option(USE_KDSINGLEAPPLICATION "Use KDSingleApplication library" ON)
 option(USE_BUNDLED_KDSINGLEAPPLICATION "Use a bundled version of the KDSingleApplication library" ${USE_KDSINGLEAPPLICATION})
 option(USE_LAUNCHER_ABSOLUTE_PATH "Use absolute path for the desktop launcher" ON)
 option(USE_WAYLAND_CLIPBOARD "USE KF Gui Wayland Clipboard" OFF)
-option(DISABLE_UPDATE_CHECKER "Disable check for updates" OFF)
+option(DISABLE_UPDATE_CHECKER "Disable check for updates" ON)
 option(ENABLE_IMGUR "Enable Imgur Uploader" OFF)
 
 if(ENABLE_IMGUR)
@@ -150,7 +155,7 @@ if(WIN32 OR APPLE)
   FetchContent_Declare(
     qHotKey
     GIT_REPOSITORY https://github.com/flameshot-org/QHotkey
-    GIT_TAG master
+    GIT_TAG d7063877c14d5ae2b489dc70bbe02e76a43bf38b
   )
   FetchContent_MakeAvailable(QHotKey)
 endif()

@@ -9,6 +9,9 @@
 #include <QVector>
 
 class CaptureToolButton;
+#if defined(Q_OS_MACOS)
+#include "platform/macos/nativeui.h"
+#endif
 class QRect;
 class QPoint;
 
@@ -19,6 +22,10 @@ public:
     ButtonHandler(const QVector<CaptureToolButton*>&,
                   QObject* parent = nullptr);
     explicit ButtonHandler(QObject* parent = nullptr);
+
+#if defined(Q_OS_MACOS)
+    MacCaptureBar* nativeBar() const { return m_nativeBar; }
+#endif
 
     void hideSectionUnderMouse(const QPoint& p);
 
@@ -48,6 +55,9 @@ private:
 
     QRect intersectWithAreas(const QRect& rect);
 
+#if defined(Q_OS_MACOS)
+    MacCaptureBar* m_nativeBar = nullptr;
+#endif
     QVector<CaptureToolButton*> m_vectorButtons;
 
     QVector<QRect> m_screenRegions;

@@ -1,0 +1,62 @@
+{
+  "fill": {
+    "automatic-gradient": "extended-srgb:0.53333,0.00000,0.66667,1.00000"
+  },
+  "groups": [
+    {
+      "name": "flame-yellow",
+      "layers": [
+        {
+          "image-name": "03-flame-yellow.png",
+          "name": "03-flame-yellow"
+        }
+      ],
+      "shadow": {
+        "kind": "neutral",
+        "opacity": 0.35
+      },
+      "translucency": {
+        "enabled": true,
+        "value": 0.35
+      }
+    },
+    {
+      "name": "flame-orange",
+      "layers": [
+        {
+          "image-name": "02-flame-orange.png",
+          "name": "02-flame-orange"
+        }
+      ],
+      "shadow": {
+        "kind": "neutral",
+        "opacity": 0.35
+      },
+      "translucency": {
+        "enabled": true,
+        "value": 0.35
+      }
+    },
+    {
+      "name": "flame-pink",
+      "layers": [
+        {
+          "image-name": "01-flame-pink.png",
+          "name": "01-flame-pink"
+        }
+      ],
+      "shadow": {
+        "kind": "neutral",
+        "opacity": 0.35
+      },
+      "translucency": {
+        "enabled": true,
+        "value": 0.35
+      }
+    }
+  ],
+  "supported-platforms": {
+    "circles": [],
+    "squares": "shared"
+  }
+}

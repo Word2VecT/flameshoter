@@ -1,0 +1,28 @@
+name: Compile Liquid Glass icon
+on:
+  push:
+    branches: [master]
+    paths: ['packaging/macos/Flameshoter.icon/**', '.github/workflows/icons.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  compile:
+    runs-on: xcode-27
+    steps:
+      - uses: actions/checkout@v6
+      - name: Compile Icon Composer document with Apple's asset compiler
+        run: |
+          mkdir -p icon-resources
+          xcrun actool packaging/macos/Flameshoter.icon \
+            --compile icon-resources --platform macosx \
+            --minimum-deployment-target 26.0 --target-device mac \
+            --app-icon Flameshoter --output-partial-info-plist icon-info.plist \
+            --output-format human-readable-text
+          test -s icon-resources/Assets.car
+      - uses: actions/upload-artifact@v7
+        with:
+          name: flameshoter-icon-resources
+          path: |
+            icon-resources/
+            icon-info.plist

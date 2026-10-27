@@ -29,45 +29,8 @@ set(CMAKE_AUTOUIC ON)
 
 # set application icon
 if (APPLE)
-    set(FLAMESHOT_ICONSET ${CMAKE_BINARY_DIR}/flameshot.iconset)
-    set(FLAMESHOT_ICNS ${CMAKE_BINARY_DIR}/flameshot.icns)
-
-    # generate iconset
-    execute_process(
-            COMMAND bash "-c" "mkdir -p \"${FLAMESHOT_ICONSET}\""
-    )
-
-    execute_process(
-            COMMAND bash "-c" "sips -z 16 16     \"${CMAKE_SOURCE_DIR}\"/data/img/app/org.flameshot.Flameshot-1024.png --out \"${FLAMESHOT_ICONSET}\"/icon_16x16.png"
-            COMMAND bash "-c" "sips -z 32 32     \"${CMAKE_SOURCE_DIR}\"/data/img/app/org.flameshot.Flameshot-1024.png --out \"${FLAMESHOT_ICONSET}\"/icon_16x16@2x.png"
-            COMMAND bash "-c" "sips -z 32 32     \"${CMAKE_SOURCE_DIR}\"/data/img/app/org.flameshot.Flameshot-1024.png --out \"${FLAMESHOT_ICONSET}\"/icon_32x32.png"
-            COMMAND bash "-c" "sips -z 64 64     \"${CMAKE_SOURCE_DIR}\"/data/img/app/org.flameshot.Flameshot-1024.png --out \"${FLAMESHOT_ICONSET}\"/icon_32x32@2x.png"
-            COMMAND bash "-c" "sips -z 64 64     \"${CMAKE_SOURCE_DIR}\"/data/img/app/org.flameshot.Flameshot-1024.png --out \"${FLAMESHOT_ICONSET}\"/icon_64x64x.png"
-            COMMAND bash "-c" "sips -z 128 128   \"${CMAKE_SOURCE_DIR}\"/data/img/app/org.flameshot.Flameshot-1024.png --out \"${FLAMESHOT_ICONSET}\"/icon_64x64@2.png"
-            COMMAND bash "-c" "sips -z 128 128   \"${CMAKE_SOURCE_DIR}\"/data/img/app/org.flameshot.Flameshot-1024.png --out \"${FLAMESHOT_ICONSET}\"/icon_128x128.png"
-            COMMAND bash "-c" "sips -z 256 256   \"${CMAKE_SOURCE_DIR}\"/data/img/app/org.flameshot.Flameshot-1024.png --out \"${FLAMESHOT_ICONSET}\"/icon_128x128@2x.png"
-            COMMAND bash "-c" "sips -z 256 256   \"${CMAKE_SOURCE_DIR}\"/data/img/app/org.flameshot.Flameshot-1024.png --out \"${FLAMESHOT_ICONSET}\"/icon_256x256.png"
-            COMMAND bash "-c" "sips -z 512 512   \"${CMAKE_SOURCE_DIR}\"/data/img/app/org.flameshot.Flameshot-1024.png --out \"${FLAMESHOT_ICONSET}\"/icon_256x256@2x.png"
-            COMMAND bash "-c" "sips -z 512 512   \"${CMAKE_SOURCE_DIR}\"/data/img/app/org.flameshot.Flameshot-1024.png --out \"${FLAMESHOT_ICONSET}\"/icon_512x512.png"
-            COMMAND bash "-c" "sips -z 1024 1024 \"${CMAKE_SOURCE_DIR}\"/data/img/app/org.flameshot.Flameshot-1024.png --out \"${FLAMESHOT_ICONSET}\"/icon_512x512@2x.png"
-
-            COMMAND bash "-c" "iconutil -o \"${FLAMESHOT_ICNS}\" -c icns \"${FLAMESHOT_ICONSET}\""
-    )
-
-    execute_process(
-        COMMAND bash "-c" "rm -R \"${FLAMESHOT_ICONSET}\""
-    )
-
-    execute_process(
-        # copy icon from cache generated on the localhost if generation on CI failed
-        COMMAND bash "-c" "[[ -r '\"${FLAMESHOT_ICNS}\"' ]] || cp \"${CMAKE_SOURCE_DIR}\"/packaging/macos/flameshot.icns \"${FLAMESHOT_ICNS}\""
-    )
-
-    # Set application icon
-    set(MACOSX_BUNDLE_ICON_FILE flameshot.icns)
-
-    # And this part tells CMake where to find and install the file itself
-    set(APP_ICON_MACOSX ${FLAMESHOT_ICNS})
+    set(MACOSX_BUNDLE_ICON_FILE Flameshoter.icns)
+    set(APP_ICON_MACOSX ${CMAKE_SOURCE_DIR}/packaging/macos/Flameshoter.icns)
     set_source_files_properties(${APP_ICON_MACOSX} PROPERTIES MACOSX_PACKAGE_LOCATION "Resources")
 
     add_executable(flameshot MACOSX_BUNDLE main.cpp ${APP_ICON_MACOSX})
@@ -225,11 +188,12 @@ endif()
 if (APPLE)
     set_target_properties(flameshot PROPERTIES
         MACOSX_BUNDLE TRUE
-        MACOSX_BUNDLE_BUNDLE_NAME "Flameshot"
+        OUTPUT_NAME "Flameshoter"
+        MACOSX_BUNDLE_BUNDLE_NAME "Flameshoter"
         MACOSX_BUNDLE_BUNDLE_VERSION ${PROJECT_VERSION}
         MACOSX_BUNDLE_SHORT_VERSION_STRING ${PROJECT_VERSION}
-        MACOSX_BUNDLE_IDENTIFIER "org.flameshot.Flameshot"
-        MACOSX_BUNDLE_GUI_IDENTIFIER "org.flameshot.Flameshot" 
+        MACOSX_BUNDLE_IDENTIFIER "io.github.Word2VecT.flameshoter"
+        MACOSX_BUNDLE_GUI_IDENTIFIER "io.github.Word2VecT.flameshoter" 
     ) 
     set_property(TARGET flameshot PROPERTY
         MACOSX_BUNDLE_INFO_PLIST ${CMAKE_SOURCE_DIR}/packaging/macos/Info.plist.in
@@ -288,7 +252,8 @@ if( DEFINED ENV{GIT_HASH})
     target_compile_definitions(flameshot PRIVATE FLAMESHOT_GIT_HASH="${FLAMESHOT_GIT_HASH}")
 elseif (GIT_FOUND)
     message("git found: ${GIT_EXECUTABLE} in version     ${GIT_VERSION_STRING}")
-    execute_process(COMMAND ${GIT_EXECUTABLE} rev-parse --short HEAD OUTPUT_VARIABLE FLAMESHOT_GIT_HASH)
+    execute_process(COMMAND ${GIT_EXECUTABLE} rev-parse --short HEAD
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR} OUTPUT_VARIABLE FLAMESHOT_GIT_HASH)
     string(REGEX REPLACE "\r*\n$" "" FLAMESHOT_GIT_HASH "${FLAMESHOT_GIT_HASH}")
     target_compile_definitions(flameshot PRIVATE FLAMESHOT_GIT_HASH="${FLAMESHOT_GIT_HASH}")
     message("FLAMESHOT_GIT_HASH: ${FLAMESHOT_GIT_HASH}")
@@ -459,8 +424,8 @@ if (APPLE)
     # Custom target to create DMG (signed or unsigned)
     add_custom_target(create_dmg
     COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/../packaging/macos/create_dmg.sh 
-            "${CMAKE_CURRENT_BINARY_DIR}/Flameshot.app"
-            "${CMAKE_CURRENT_BINARY_DIR}/Flameshot-${PROJECT_VERSION}.dmg"
+            "$<TARGET_BUNDLE_DIR:flameshot>"
+            "${CMAKE_CURRENT_BINARY_DIR}/Flameshoter-${PROJECT_VERSION}.dmg"
             "${CODE_SIGN_IDENTITY}"
             "${DMG_SIGN_IDENTITY}"
     DEPENDS flameshot
@@ -469,10 +434,14 @@ if (APPLE)
     VERBATIM
     )
 
+# Release packaging can stage outside cloud-synced source folders.
+    option(FLAMESHOTER_DEPLOY_QT "Deploy and sign the build bundle" ON)
+    if(FLAMESHOTER_DEPLOY_QT)
 # Always sign the app bundle (either with identity or ad hoc)
     if(CODE_SIGN_IDENTITY AND NOT CODE_SIGN_IDENTITY STREQUAL "")
         # Identity-based signing (requires Developer ID)
         add_custom_command(TARGET flameshot POST_BUILD
+            COMMAND /usr/bin/xattr -cr "$<TARGET_BUNDLE_DIR:flameshot>"
             COMMAND codesign --force --deep --sign "${CODE_SIGN_IDENTITY}" 
                     --options runtime --timestamp "$<TARGET_BUNDLE_DIR:flameshot>"
             COMMENT "Code signing app bundle with ${CODE_SIGN_IDENTITY}"
@@ -480,6 +449,7 @@ if (APPLE)
     else()
         # Ad hoc signing 
         add_custom_command(TARGET flameshot POST_BUILD
+            COMMAND /usr/bin/xattr -cr "$<TARGET_BUNDLE_DIR:flameshot>"
             COMMAND codesign --force --deep --sign - "$<TARGET_BUNDLE_DIR:flameshot>"
             COMMENT "Ad hoc code signing app bundle (no identity required)"
         )
@@ -496,13 +466,15 @@ if (APPLE)
        # Re-sign after macdeployqt (it modifies the bundle)
        if(CODE_SIGN_IDENTITY AND NOT CODE_SIGN_IDENTITY STREQUAL "")
            add_custom_command(TARGET flameshot POST_BUILD
-               COMMAND codesign --force --deep --sign "${CODE_SIGN_IDENTITY}" 
+               COMMAND /usr/bin/xattr -cr "$<TARGET_BUNDLE_DIR:flameshot>"
+            COMMAND codesign --force --deep --sign "${CODE_SIGN_IDENTITY}" 
                        --options runtime --timestamp "$<TARGET_BUNDLE_DIR:flameshot>"
                COMMENT "Re-signing app bundle after Qt deployment"
            )
        else()
            add_custom_command(TARGET flameshot POST_BUILD
-               COMMAND codesign --force --deep --sign - "$<TARGET_BUNDLE_DIR:flameshot>"
+               COMMAND /usr/bin/xattr -cr "$<TARGET_BUNDLE_DIR:flameshot>"
+            COMMAND codesign --force --deep --sign - "$<TARGET_BUNDLE_DIR:flameshot>"
                COMMENT "Re-signing app bundle after Qt deployment (ad hoc)"
            )
        endif()
@@ -510,5 +482,12 @@ if (APPLE)
        message(WARNING "macdeployqt not found. App may not run on systems without Qt installed.")
    endif()
 
-
+    endif() # FLAMESHOTER_DEPLOY_QT
 endif ()
+
+# Flameshoter's macOS controls use the system Liquid Glass implementation.
+if(APPLE)
+    target_sources(flameshot PRIVATE platform/macos/nativeui.mm)
+    set_source_files_properties(platform/macos/nativeui.mm PROPERTIES COMPILE_OPTIONS "-fobjc-arc")
+    target_link_libraries(flameshot "-framework AppKit")
+endif()

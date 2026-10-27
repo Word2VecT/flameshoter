@@ -6,6 +6,7 @@
 
 #include <QPoint>
 #include <QScreen>
+#include <QWidget>
 
 // ButtonHandler is a handler for every active button. It makes easier to
 // manipulate the buttons as a unit.
@@ -26,6 +27,9 @@ ButtonHandler::ButtonHandler(QObject* parent)
 
 void ButtonHandler::hide()
 {
+#if defined(Q_OS_MACOS)
+    if (m_nativeBar) { m_nativeBar->setVisible(false); return; }
+#endif
     for (CaptureToolButton* b : m_vectorButtons) {
         b->hide();
     }
@@ -33,6 +37,9 @@ void ButtonHandler::hide()
 
 void ButtonHandler::show()
 {
+#if defined(Q_OS_MACOS)
+    if (m_nativeBar) { m_nativeBar->setVisible(true); return; }
+#endif
     if (m_vectorButtons.isEmpty() || m_vectorButtons.first()->isVisible()) {
         return;
     }
@@ -43,6 +50,9 @@ void ButtonHandler::show()
 
 bool ButtonHandler::isVisible() const
 {
+#if defined(Q_OS_MACOS)
+    if (m_nativeBar) return m_nativeBar->isVisible();
+#endif
     bool ret = true;
     for (const CaptureToolButton* b : m_vectorButtons) {
         if (!b->isVisible()) {
@@ -69,6 +79,9 @@ size_t ButtonHandler::size() const
 // the original in the center.
 void ButtonHandler::updatePosition(const QRect& selection)
 {
+#if defined(Q_OS_MACOS)
+    if (m_nativeBar) { m_nativeBar->setSelection(selection); m_buttonsAreInside = false; return; }
+#endif
     resetRegionTrack();
     const int vecLength = m_vectorButtons.size();
     if (vecLength == 0) {
@@ -364,12 +377,20 @@ void ButtonHandler::setButtons(const QVector<CaptureToolButton*>& v)
         delete (b);
     }
     m_vectorButtons = v;
+#if defined(Q_OS_MACOS)
+    delete m_nativeBar;
+    m_nativeBar = new MacCaptureBar(qobject_cast<QWidget*>(parent()), v, this);
+    m_buttonsAreInside = false;
+#endif
     m_buttonBaseSize = GlobalValues::buttonBaseSize();
     m_buttonExtendedSize = m_buttonBaseSize + m_separator;
 }
 
 bool ButtonHandler::contains(const QPoint& p) const
 {
+#if defined(Q_OS_MACOS)
+    if (m_nativeBar) return m_nativeBar->contains(p);
+#endif
     if (m_vectorButtons.isEmpty()) {
         return false;
     }

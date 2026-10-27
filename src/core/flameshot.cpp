@@ -40,6 +40,7 @@ constexpr const char* visibleInDockProperty = "_visibleInDock";
 } // namespace
 
 #include <CoreGraphics/CoreGraphics.h>
+#include "platform/macos/nativeui.h"
 #endif
 
 #include "config/cacheutils.h"
@@ -86,12 +87,14 @@ Flameshot::Flameshot()
   , m_HotkeyScreenshotHistory(nullptr)
 #endif
 {
+#if !defined(Q_OS_MACOS)
     QString StyleSheet = CaptureButton::globalStyleSheet();
     qApp->setStyleSheet(StyleSheet);
+#endif
 
 #if defined(Q_OS_MACOS)
     // Request Screen Recording permission via the proper CoreGraphics API
-    if (!CGPreflightScreenCaptureAccess()) {
+    if (qEnvironmentVariableIsEmpty("FLAMESHOTER_TEST_IMAGE") && !CGPreflightScreenCaptureAccess()) {
         CGRequestScreenCaptureAccess();
     }
 #endif
@@ -260,6 +263,10 @@ void Flameshot::full(const CaptureRequest& req)
 
 void Flameshot::launcher()
 {
+#if defined(Q_OS_MACOS)
+    MacUI::showLauncher();
+    return;
+#endif
     if (!resolveAnyConfigErrors()) {
         return;
     }
@@ -275,6 +282,10 @@ void Flameshot::launcher()
 
 void Flameshot::config()
 {
+#if defined(Q_OS_MACOS)
+    MacUI::showPreferences();
+    return;
+#endif
     if (!resolveAnyConfigErrors()) {
         return;
     }
@@ -296,6 +307,10 @@ void Flameshot::config()
 
 void Flameshot::info()
 {
+#if defined(Q_OS_MACOS)
+    MacUI::showAbout();
+    return;
+#endif
     if (m_infoWindow == nullptr) {
         m_infoWindow = new InfoWindow();
 #if defined(Q_OS_MACOS)

@@ -121,15 +121,21 @@ CaptureWidget::CaptureWidget(const CaptureRequest& req,
         } else {
             preSelectedMonitor = -1;
         }
-        m_context.screenshot =
-          grabber.grabEntireDesktop(ok, preSelectedMonitor);
+        // Deterministic UI testing without reading the user's desktop.
+        const QString testImage = qEnvironmentVariable("FLAMESHOTER_TEST_IMAGE");
+        if (!testImage.isEmpty()) {
+            m_context.screenshot = QPixmap(testImage);
+            ok = !m_context.screenshot.isNull();
+        } else {
+            m_context.screenshot = grabber.grabEntireDesktop(ok, preSelectedMonitor);
+        }
         if (!ok) {
             // Error already logged in ScreenGrabber
             this->close();
         }
         m_context.origScreenshot = m_context.screenshot;
 
-        selectedScreen = grabber.getSelectedScreen();
+        selectedScreen = testImage.isEmpty() ? grabber.getSelectedScreen() : QGuiApplication::primaryScreen();
 
 #if defined(Q_OS_WIN)
 #if !defined(FLAMESHOT_DEBUG_CAPTURE)
@@ -239,6 +245,16 @@ CaptureWidget::CaptureWidget(const CaptureRequest& req,
     // Init notification widget
     m_notifierBox = new NotifierBox(this);
     initPanel();
+#if defined(Q_OS_MACOS)
+    auto* native = m_buttonHandler->nativeBar();
+    native->colorChanged = [this](const QColor& c) { setDrawColor(c); };
+    native->thicknessChanged = [this](int n) { emit toolSizeChanged(n); };
+    native->layerSelected = [this](int n) { m_panel->setActiveLayer(n); };
+    native->deleteLayer = [this] { deleteCurrentTool(); updateLayersPanel(); };
+    native->hoverChanged = [this](bool inside) { inside ? childEnter() : childLeave(); };
+    connect(this, &CaptureWidget::colorChanged, native, [native](const QColor& c) { native->setColor(c); });
+    connect(this, &CaptureWidget::toolSizeChanged, native, [native](int n) { native->setThickness(n); });
+#endif
 
     // TODO: Make it more clear why this has moved. In Qt6 some timing related
     // to constructors / connect signals has changed so if initPanel is called
@@ -329,6 +345,10 @@ CaptureWidget::~CaptureWidget()
     } else {
         emit Flameshot::instance()->captureFailed();
     }
+#if defined(Q_OS_MACOS)
+    delete m_buttonHandler;
+    m_buttonHandler = nullptr;
+#endif
 }
 
 void CaptureWidget::initButtons()
@@ -555,7 +575,11 @@ void CaptureWidget::initQuitPrompt()
 
 bool CaptureWidget::promptQuit()
 {
+#if defined(Q_OS_MACOS)
+    return MacUI::confirmDiscard();
+#else
     return m_quitPrompt->exec() == QMessageBox::Yes;
+#endif
 }
 
 void CaptureWidget::deleteToolWidgetOrClose()
@@ -617,6 +641,9 @@ void CaptureWidget::uncheckActiveTool()
     m_activeButton->setColor(m_uiColor);
     updateTool(activeButtonTool());
     m_activeButton = nullptr;
+#if defined(Q_OS_MACOS)
+    m_buttonHandler->nativeBar()->setActiveTool(CaptureTool::NONE);
+#endif
     releaseActiveTool();
     updateSelectionState();
     updateCursor();
@@ -794,6 +821,10 @@ void CaptureWidget::paintEvent(QPaintEvent* paintEvent)
 
 void CaptureWidget::showColorPicker(const QPoint& pos)
 {
+#if defined(Q_OS_MACOS)
+    m_buttonHandler->nativeBar()->toggleInspector();
+    return;
+#endif
     // Try to select new object if current pos out of active object
     auto toolItem = activeToolObject();
     if (!toolItem || (toolItem && !toolItem->boundingRect().contains(pos))) {
@@ -1222,7 +1253,11 @@ void CaptureWidget::initPanel()
     // coords
     QRect panelRect = rect();
 
-    if (ConfigHandler().showSidePanelButton()) {
+    if (ConfigHandler().showSidePanelButton()
+#if defined(Q_OS_MACOS)
+        && false // The native toolbar owns the inspector button.
+#endif
+    ) {
         auto* panelToggleButton =
           new OrientablePushButton(tr("Tool Settings"), this);
         makeChild(panelToggleButton);
@@ -1313,6 +1348,13 @@ void CaptureWidget::initPanel()
 
     // Fill undo/redo/history list widget
     m_panel->fillCaptureTools(m_captureToolObjects.captureToolObjects());
+#if defined(Q_OS_MACOS)
+    if (m_buttonHandler->nativeBar()) {
+        QStringList layers;
+        for (auto tool : m_captureToolObjects.captureToolObjects()) layers << tool->name();
+        m_buttonHandler->nativeBar()->setLayers(layers, m_panel->activeLayerIndex());
+    }
+#endif
 }
 
 #if !defined(DISABLE_UPDATE_CHECKER)
@@ -1437,6 +1479,9 @@ void CaptureWidget::setState(CaptureToolButton* b)
         updateCursor();
         updateSelectionState();
         updateTool(b->tool());
+#if defined(Q_OS_MACOS)
+        m_buttonHandler->nativeBar()->setActiveTool(activeButtonToolType());
+#endif
     }
 }
 
@@ -1825,6 +1870,13 @@ void CaptureWidget::updateTool(CaptureTool* tool)
 void CaptureWidget::updateLayersPanel()
 {
     m_panel->fillCaptureTools(m_captureToolObjects.captureToolObjects());
+#if defined(Q_OS_MACOS)
+    if (m_buttonHandler->nativeBar()) {
+        QStringList layers;
+        for (auto tool : m_captureToolObjects.captureToolObjects()) layers << tool->name();
+        m_buttonHandler->nativeBar()->setLayers(layers, m_panel->activeLayerIndex());
+    }
+#endif
 }
 
 void CaptureWidget::pushToolToStack()
@@ -1975,6 +2027,10 @@ QList<QShortcut*> CaptureWidget::newShortcut(const QKeySequence& key,
 
 void CaptureWidget::togglePanel()
 {
+#if defined(Q_OS_MACOS)
+    m_buttonHandler->nativeBar()->toggleInspector();
+    return;
+#endif
     m_panel->toggle();
 }
 

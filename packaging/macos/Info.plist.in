@@ -5,7 +5,9 @@
     <key>CFBundleExecutable</key>
     <string>${MACOSX_BUNDLE_EXECUTABLE_NAME}</string>
   	<key>CFBundleIconFile</key>
-	<string>flameshot</string>
+	<string>Flameshoter</string>
+    <key>CFBundleIconName</key>
+    <string>Flameshoter</string>
     <key>CFBundleIdentifier</key>
     <string>${MACOSX_BUNDLE_GUI_IDENTIFIER}</string>
     <key>CFBundleName</key>
@@ -24,6 +26,12 @@
     <string>6.0</string>
     <key>LSMinimumSystemVersion</key>
     <string>${CMAKE_OSX_DEPLOYMENT_TARGET}</string>
+    <key>CFBundleDevelopmentRegion</key>
+    <string>en</string>
+    <key>CFBundleLocalizations</key>
+    <array><string>en</string><string>zh_CN</string></array>
+    <key>NSScreenCaptureUsageDescription</key>
+    <string>Flameshoter captures your screen so you can select and annotate screenshots.</string>
     <key>NSHighResolutionCapable</key>
     <true/>
     <key>LSUIElement</key>

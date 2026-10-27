@@ -34,6 +34,9 @@
 #include <QSharedMemory>
 #include <QTimer>
 #include <QTranslator>
+#if defined(Q_OS_MACOS)
+#include "platform/macos/nativeui.h"
+#endif
 
 // Required for saving button list QList<CaptureTool::Type>
 Q_DECLARE_METATYPE(QList<int>)
@@ -94,7 +97,7 @@ int requestCaptureAndWait(const CaptureRequest& req)
 
 QSharedMemory* guiMutexLock()
 {
-    QString key = "org.flameshot.Flameshot-" APP_VERSION;
+    QString key = "io.github.Word2VecT.flameshoter-" APP_VERSION;
     auto* shm = new QSharedMemory(key);
 #ifdef Q_OS_UNIX
     // Destroy shared memory if the last instance crashed on Unix
@@ -190,6 +193,8 @@ void configureApp(bool gui, QTranslator& translator, QTranslator& qtTranslator)
     if (gui) {
 #if defined(Q_OS_WIN) && QT_VERSION >= QT_VERSION_CHECK(6, 5, 0)
         QApplication::setStyle("Fusion"); // Supports dark scheme on Win 10/11
+#elif defined(Q_OS_MACOS)
+        QApplication::setStyle("macOS");
 #else
         QApplication::setStyle(new StyleOverride);
 #endif
@@ -221,8 +226,10 @@ int main(int argc, char* argv[])
     qRegisterMetaType<QList<int>>();
 
     QCoreApplication::setApplicationVersion(APP_VERSION);
-    QCoreApplication::setApplicationName(QStringLiteral("flameshot"));
-    QCoreApplication::setOrganizationName(QStringLiteral("flameshot"));
+    QCoreApplication::setApplicationName(QStringLiteral("flameshoter"));
+    QCoreApplication::setOrganizationName(QStringLiteral("flameshoter"));
+    const QString testConfig = qEnvironmentVariable("FLAMESHOTER_TEST_CONFIG");
+    if (!testConfig.isEmpty()) QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, testConfig);
     QNetworkProxyFactory::setUseSystemConfiguration(true);
 
     // no arguments, just launch Flameshot
@@ -236,7 +243,7 @@ int main(int argc, char* argv[])
         auto signalDaemon = SignalDaemon();
 #endif
         auto kdsa =
-          KDSingleApplication(QStringLiteral("org.flameshot.Flameshot"));
+          KDSingleApplication(QStringLiteral("io.github.Word2VecT.flameshoter"));
 
         if (!kdsa.isPrimaryInstance() &&
             !ConfigHandler().allowMultipleGuiInstances()) {
@@ -247,6 +254,9 @@ int main(int argc, char* argv[])
         configureApp(true, translator, qtTranslator);
         auto c = Flameshot::instance();
         FlameshotDaemon::start();
+#if defined(Q_OS_MACOS)
+        QTimer::singleShot(0, [] { MacUI::showLauncher(); });
+#endif
 
 #if defined(USE_KDSINGLEAPPLICATION) &&                                        \
   (defined(Q_OS_MACOS) || defined(Q_OS_WIN))
@@ -267,7 +277,7 @@ int main(int argc, char* argv[])
               << QObject::tr("Unable to connect via DBus");
         }
         dbus.registerObject(QStringLiteral("/"), c);
-        dbus.registerService(QStringLiteral("org.flameshot.Flameshot"));
+        dbus.registerService(QStringLiteral("io.github.Word2VecT.flameshoter"));
 #endif
         return qApp->exec();
     }

@@ -83,6 +83,9 @@ void UtilityPanel::pushWidget(QWidget* widget)
 
 void UtilityPanel::show()
 {
+#if defined(Q_OS_MACOS)
+    return; // Presented by the AppKit inspector.
+#endif
     if (!m_internalPanel->isHidden()) {
         return;
     }
