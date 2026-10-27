@@ -223,6 +223,7 @@ struct MacCaptureBar::Private {
     __strong NSPopUpButton* layers;
     __strong NSStackView* textOptions;
     __strong NSMutableDictionary<NSNumber*, NSButton*>* buttons;
+    __strong id inspectorKeyboard;
     QRect selection;
     bool visible = false;
 };
@@ -256,6 +257,7 @@ MacCaptureBar::MacCaptureBar(QWidget* host,
                        type == 12 || type == 23;
         if (primary.contains(type) || command) {
             auto b = iconButton(toolName(tool), symbol(type), invoke);
+            if (tool->tool()->isSelectable()) [b setButtonType:NSButtonTypePushOnPushOff];
             d->buttons[@(type)] = b;
             [(command ? commands : drawing) addObject:b];
         } else {
@@ -408,12 +410,25 @@ MacCaptureBar::MacCaptureBar(QWidget* host,
     d->inspector = [NSPopover new];
     d->inspector.behavior = NSPopoverBehaviorSemitransient;
     d->inspector.contentViewController = controller;
+    d->inspectorKeyboard = [NSEvent addLocalMonitorForEventsMatchingMask:NSEventMaskKeyDown
+        handler:^NSEvent*(NSEvent* event) {
+            if (!d->inspector.shown) return event;
+            const bool editing = [NSApp.keyWindow.firstResponder isKindOfClass:NSTextView.class];
+            const bool plainSpace = event.keyCode == 49 && !editing &&
+                !(event.modifierFlags & (NSEventModifierFlagCommand | NSEventModifierFlagControl | NSEventModifierFlagOption));
+            if (event.keyCode != 53 && !plainSpace) return event;
+            [d->inspector close];
+            [d->host.window makeKeyWindow];
+            [d->host.window makeFirstResponder:d->host];
+            return nil;
+        }];
     setThickness(ConfigHandler().drawThickness());
     setLayers({}, -1);
 }
 
 MacCaptureBar::~MacCaptureBar()
 {
+    [NSEvent removeMonitor:d->inspectorKeyboard];
     [d->inspector close];
     [d->panel.parentWindow removeChildWindow:d->panel];
     [d->panel close];
@@ -473,8 +488,10 @@ void MacCaptureBar::setActiveTool(int type)
     d->textOptions.hidden = type != CaptureTool::TYPE_TEXT;
     for (NSNumber* key in d->buttons) {
         auto b = d->buttons[key];
-        b.contentTintColor = key.intValue == type ? NSColor.controlAccentColor : NSColor.labelColor;
-        [b setAccessibilityValue:key.intValue == type ? @1 : @0];
+        const BOOL selected = key.intValue == type;
+        b.state = selected ? NSControlStateValueOn : NSControlStateValueOff;
+        b.contentTintColor = selected ? NSColor.controlAccentColor : NSColor.labelColor;
+        [b setAccessibilityValue:selected ? @1 : @0];
     }
 }
 void MacCaptureBar::setColor(const QColor& color) { d->color.color = nativeColor(color); }
