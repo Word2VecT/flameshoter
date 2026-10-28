@@ -8,7 +8,9 @@ let package = Package(
   targets: [
     .target(name: "FlameshoterCore"),
     .executableTarget(name: "Flameshoter", dependencies: ["FlameshoterCore"]),
-    .testTarget(name: "FlameshoterCoreTests", dependencies: ["FlameshoterCore", "Flameshoter"]),
+    .testTarget(
+      name: "FlameshoterCoreTests", dependencies: ["FlameshoterCore", "Flameshoter"],
+      resources: [.copy("Fixtures")]),
   ],
   swiftLanguageModes: [.v5]
 )

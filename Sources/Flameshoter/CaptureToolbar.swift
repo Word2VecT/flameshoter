@@ -4,73 +4,10 @@ import FlameshoterCore
 
 // Empty space between the native glass buttons must still reach the capture canvas.
 @MainActor final class ToolbarGlassContainer: NSGlassEffectContainerView {
+  override var isFlipped: Bool { true }
   override func hitTest(_ point: NSPoint) -> NSView? {
     let hit = super.hitTest(point)
     return hit is NSControl ? hit : nil
-  }
-}
-
-/// Flameshot lays enabled tools clockwise around the selection, then inside it
-/// when the screen edges leave no outside space. Coordinates are canvas-local.
-enum CaptureToolbarLayout {
-  static let buttonSize = CGSize(width: 50, height: 48)
-  static func frames(count: Int, selection: CGRect, bounds: CGRect) -> [CGRect] {
-    let area = bounds.insetBy(dx: 12, dy: 12)
-    let pitch = CGSize(width: 56, height: 54)
-    let gap: CGFloat = 10
-    var frames: [CGRect] = []
-    func append(_ origin: CGPoint) {
-      let rect = CGRect(origin: origin, size: buttonSize)
-      if frames.count < count, area.contains(rect),
-        !frames.contains(where: { $0.insetBy(dx: -2, dy: -2).intersects(rect) })
-      {
-        frames.append(rect)
-      }
-    }
-    var ring = CGRect(
-      x: selection.midX - max(buttonSize.width, selection.width) / 2,
-      y: selection.midY - max(buttonSize.height, selection.height) / 2,
-      width: max(buttonSize.width, selection.width),
-      height: max(buttonSize.height, selection.height))
-    for _ in 0..<count {
-      let horizontal = max(1, Int(min(ring.width, area.width) / pitch.width))
-      let vertical = max(1, Int(min(ring.height, area.height) / pitch.height))
-      let x = min(
-        area.maxX - CGFloat(horizontal) * pitch.width,
-        max(area.minX, ring.midX - CGFloat(horizontal) * pitch.width / 2))
-      let y = min(
-        area.maxY - CGFloat(vertical) * pitch.height,
-        max(area.minY, ring.midY - CGFloat(vertical) * pitch.height / 2))
-      for i in 0..<horizontal {
-        append(CGPoint(x: x + CGFloat(i) * pitch.width, y: ring.maxY + gap))
-      }
-      for i in 0..<vertical {
-        append(CGPoint(x: ring.maxX + gap, y: y + CGFloat(i) * pitch.height))
-      }
-      for i in (0..<horizontal).reversed() {
-        append(CGPoint(x: x + CGFloat(i) * pitch.width, y: ring.minY - gap - buttonSize.height))
-      }
-      for i in (0..<vertical).reversed() {
-        append(CGPoint(x: ring.minX - gap - buttonSize.width, y: y + CGFloat(i) * pitch.height))
-      }
-      if frames.count == count || ring.contains(area) { break }
-      ring = ring.insetBy(dx: -pitch.width, dy: -pitch.height)
-    }
-    // A full-screen selection has no outside edges available.
-    if frames.count < count {
-      let columns = max(1, Int((area.width + 6) / pitch.width))
-      for row in 0..<max(1, Int((area.height + 6) / pitch.height)) {
-        for column in 0..<columns {
-          append(
-            CGPoint(
-              x: area.midX - (CGFloat(columns) * pitch.width - 6) / 2 + CGFloat(column)
-                * pitch.width,
-              y: area.maxY - buttonSize.height - CGFloat(row) * pitch.height))
-        }
-        if frames.count == count { break }
-      }
-    }
-    return frames
   }
 }
 
@@ -79,6 +16,10 @@ enum CaptureToolbarLayout {
   let root = ToolbarGlassContainer()
   private let content = FlippedView()
   private var items: [NSGlassEffectView] = []
+  private var inspectorGlass: NSGlassEffectView?
+  // Same line-spacing × 2.2 sizing rule as Flameshot's GlobalValues.
+  private let buttonSize = Int(
+    NSLayoutManager().defaultLineHeight(for: .systemFont(ofSize: NSFont.systemFontSize)) * 2.2)
   private var buttons: [Tool: ActionButton] = [:]
   private let inspectorButton: ActionButton
   private let popover = NSPopover()
@@ -100,11 +41,14 @@ enum CaptureToolbarLayout {
     let outputRequested = command.copy || command.raw || command.path != nil || command.pin
     let excluded: [Tool] = outputRequested ? [.copy, .save, .openWith, .pin] : [.accept]
     for tool in Tool.toolbarOrder where prefs.tools.contains(tool) && !excluded.contains(tool) {
-      items.append(glass(makeButton(tool), radius: 16))
+      items.append(glass(makeButton(tool), radius: CGFloat(buttonSize) / 2))
     }
     if prefs.bool("showSidePanelButton") {
       configure(inspectorButton)
-      items.append(glass(inspectorButton, radius: 16))
+      let effect = glass(inspectorButton, radius: CGFloat(buttonSize) / 2)
+      effect.translatesAutoresizingMaskIntoConstraints = true
+      inspectorGlass = effect
+      content.addSubview(effect)
     }
     for item in items {
       item.translatesAutoresizingMaskIntoConstraints = true
@@ -116,8 +60,8 @@ enum CaptureToolbarLayout {
   private func configure(_ button: ActionButton) {
     button.bezelStyle = .accessoryBarAction
     button.isBordered = false
-    button.widthAnchor.constraint(equalToConstant: 34).isActive = true
-    button.heightAnchor.constraint(equalToConstant: 32).isActive = true
+    button.widthAnchor.constraint(equalToConstant: CGFloat(buttonSize - 16)).isActive = true
+    button.heightAnchor.constraint(equalToConstant: CGFloat(buttonSize - 16)).isActive = true
   }
   private func makeButton(_ tool: Tool) -> ActionButton {
     let button = ActionButton("", symbol: tool.symbol) { [weak self] in self?.invoke(tool) }
@@ -127,6 +71,11 @@ enum CaptureToolbarLayout {
       toolTitle(tool) + (prefs.shortcut(tool.legacyName).map { "  \($0.display)" } ?? "")
     if tool.isDrawing || [.select, .moveSelection].contains(tool) {
       button.setButtonType(.pushOnPushOff)
+      button.secondaryInvoke = { [weak self] in
+        guard let self, let canvas = self.canvas else { return }
+        if canvas.tool != tool { canvas.setTool(tool) }
+        if !self.popover.isShown { self.toggleInspector() }
+      }
     }
     buttons[tool] = button
     return button
@@ -154,8 +103,14 @@ enum CaptureToolbarLayout {
       return
     }
     let frames = CaptureToolbarLayout.frames(
-      count: items.count, selection: selection, bounds: canvas.bounds)
-    let frame = frames.reduce(CGRect.null) { $0.union($1) }
+      count: items.count, selection: selection, bounds: canvas.bounds, baseSize: buttonSize)
+    // The original Tool Settings toggle lives at the left screen edge,
+    // separate from the tools surrounding the selection.
+    let inspectorFrame = CGRect(
+      x: 0, y: (canvas.bounds.height - CGFloat(buttonSize)) / 2,
+      width: CGFloat(buttonSize), height: CGFloat(buttonSize))
+    var frame = frames.reduce(CGRect.null) { $0.union($1) }
+    if inspectorGlass != nil { frame = frame.union(inspectorFrame) }
     guard !frame.isNull else {
       root.isHidden = true
       return
@@ -165,6 +120,7 @@ enum CaptureToolbarLayout {
     for (item, rect) in zip(items, frames) {
       item.frame = rect.offsetBy(dx: -frame.minX, dy: -frame.minY)
     }
+    inspectorGlass?.frame = inspectorFrame.offsetBy(dx: -frame.minX, dy: -frame.minY)
     root.layoutSubtreeIfNeeded()
     root.isHidden = false
   }

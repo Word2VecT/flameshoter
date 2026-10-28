@@ -43,7 +43,7 @@ flameshoter config
 
 ## 设置与迁移
 
-提供 **通用、截图、工具栏、颜色、保存、标注、快捷键** 七个原生设置页。语言可选择简体中文、English 或跟随系统；系统对话框语言在重启后应用。全局快捷键修改立即生效。
+提供 **通用、截图、工具栏、颜色、保存、标注、快捷键** 七个原生设置页。语言可选择简体中文、English 或跟随系统；系统对话框语言在重启后应用。全局快捷键修改立即生效。选项按功能分组，工具与色板使用多列布局，窗口高度随当前页面内容调整。
 
 首次启动 0.2.0 会导入现有 Flameshoter INI 配置。也可手动导入 Flameshot `.ini` 或原生 JSON，并导出或恢复默认值。新设置保存在 `~/Library/Application Support/Flameshoter/settings.json`，旧文件保留。
 
@@ -51,7 +51,7 @@ flameshoter config
 
 ## 原生设计与图标
 
-选区整体使用 Apple `NSGlassEffectView` 的 Clear 材质，截图内容作为前景保持清晰，边缘显示系统玻璃效果。选区外采用 `NSVisualEffectView` 的 FullScreenUI 毛玻璃。已启用的工具按 Flameshot 原版顺序直接沿选区四周排列，屏幕边缘没有空间时放入选区内。工具栏使用 `NSGlassEffectContainerView` 组织原生玻璃按钮；设置、菜单、颜色面板、保存面板、文本编辑、置顶窗口和撤销管理均采用 AppKit。没有自制玻璃着色器或仿制模糊效果。材质只影响预览，导出保留原始矩形像素与标注。
+选区整体使用 Apple `NSGlassEffectView` 的 Clear 材质，截图内容作为前景保持清晰，边缘显示系统玻璃效果。选区外采用 `NSVisualEffectView` 的 FullScreenUI 毛玻璃。工具列表和选区周围的按钮排布迁移自 Flameshot macOS 的原始实现，包括屏幕边缘判断、角落分配、小选区扩展和选区内回退。工具设置按钮位于屏幕左侧，右键工具可打开参数面板。工具栏使用 `NSGlassEffectContainerView` 组织原生玻璃按钮；设置、菜单、颜色面板、保存面板、文本编辑、置顶窗口和撤销管理均采用 AppKit。没有自制玻璃着色器或仿制模糊效果。材质只影响预览，导出保留原始矩形像素与标注。
 
 图标保留 Flameshot 的三片火焰轮廓，使用 **Apple Icon Composer** 制作。发布时由 `actool` 将 [`Flameshoter.icon`](packaging/macos/Flameshoter.icon) 编译为系统图标资源，适配浅色、深色及单色外观。
 

@@ -63,12 +63,15 @@ public enum Tool: Int, Codable, CaseIterable, Identifiable, Sendable {
   case invert = 22
   case accept = 23
   case clearSelection = 24
-  // Original Flameshot macOS button priority, followed by native-only actions.
+  // getIterableButtonTypes() is the order used by CaptureWidget::initButtons.
   public static let toolbarOrder: [Tool] = [
     .pencil, .line, .arrow, .select, .rectangle, .ellipse, .marker, .text,
-    .pixelate, .invert, .counter, .moveSelection, .undo, .redo, .copy, .save,
-    .accept, .exit, .pin, .sizeIncrease, .sizeDecrease, .openWith, .clearSelection,
+    .counter, .pixelate, .invert, .moveSelection, .undo, .redo, .copy, .save,
+    .exit, .pin, .sizeIncrease, .sizeDecrease, .accept,
   ]
+  public static let defaultToolbar = toolbarOrder.filter {
+    ![Tool.sizeIncrease, .sizeDecrease].contains($0)
+  }
   public var id: Int { rawValue }
   public var isDrawing: Bool {
     [.pencil, .line, .arrow, .rectangle, .ellipse, .marker, .pixelate, .text, .counter, .invert]

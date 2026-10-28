@@ -7,7 +7,7 @@ public struct Preferences: Codable, Equatable, Sendable {
   public var shortcuts = Shortcut.defaults
   public var unassignedShortcuts: Set<String> = []
   public var colors = RGBA.defaults
-  public var tools = Tool.allCases
+  public var tools = Tool.defaultToolbar
   public init() {}
   public static let defaults: [String: String] = [
     "uiLanguage": "auto", "startupLaunch": "false", "disabledTrayIcon": "false",

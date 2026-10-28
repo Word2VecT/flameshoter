@@ -48,36 +48,62 @@ import UserNotifications
   }
 }
 
+@MainActor final class PreferencesTabs: NSTabViewController {
+  var onSelection: (() -> Void)?
+  override func tabView(_ tabView: NSTabView, didSelect tabViewItem: NSTabViewItem?) {
+    super.tabView(tabView, didSelect: tabViewItem)
+    onSelection?()
+  }
+}
+
 @MainActor final class PreferencesController: NSWindowController {
-  private let tabs = NSTabViewController()
+  private let tabs = PreferencesTabs()
+  private var rebuilding = false
   private var settings: SettingsStore { Environment.shared.settings }
   private var p: Preferences { settings.preferences }
   init() {
     let window = NSWindow(
-      contentRect: NSRect(x: 0, y: 0, width: 780, height: 680),
+      contentRect: NSRect(x: 0, y: 0, width: 740, height: 620),
       styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false
     )
     window.title = localized("Flameshoter Settings", "Flameshoter 设置")
     window.isReleasedWhenClosed = false
-    window.minSize = NSSize(width: 760, height: 540)
+    window.minSize = NSSize(width: 720, height: 360)
     window.center()
     window.setFrameAutosaveName("FlameshoterNativePreferences")
     super.init(window: window)
     tabs.tabStyle = .toolbar
     window.contentViewController = tabs
     rebuild()
+    tabs.onSelection = { [weak self] in self?.fitSelectedPage() }
   }
   required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
+  private func fitSelectedPage() {
+    guard !rebuilding, let window,
+      tabs.tabViewItems.indices.contains(tabs.selectedTabViewItemIndex),
+      let scroll = tabs.tabViewItems[tabs.selectedTabViewItemIndex].viewController?.view
+        as? NSScrollView,
+      let document = scroll.documentView
+    else { return }
+    tabs.view.layoutSubtreeIfNeeded()
+    let chrome = window.frame.height - scroll.frame.height
+    let maximum = min(760, (window.screen ?? NSScreen.main)!.visibleFrame.height - 40)
+    let height = min(maximum, max(window.minSize.height, document.fittingSize.height + chrome))
+    var frame = window.frame
+    frame.origin.y += frame.height - height
+    frame.size.height = height
+    window.setFrame(frame, display: true, animate: window.isVisible)
+  }
   private func heading(_ en: String, _ zh: String) -> NSView {
-    let view = label(localized(en, zh), size: 17)
-    view.font = .systemFont(ofSize: 17, weight: .semibold)
+    let view = label(localized(en, zh), size: 15)
+    view.font = .systemFont(ofSize: 15, weight: .semibold)
     return view
   }
   private func row(_ en: String, _ zh: String, _ control: NSView) -> NSStackView {
     let name = label(localized(en, zh))
-    name.widthAnchor.constraint(greaterThanOrEqualToConstant: 220).isActive = true
+    name.widthAnchor.constraint(equalToConstant: 240).isActive = true
     control.setContentHuggingPriority(.required, for: .horizontal)
-    return stack([name, control], vertical: false)
+    return stack([name, control, NSView()], vertical: false, spacing: 12)
   }
   private func boolean(_ key: String, _ en: String, _ zh: String, inverse: Bool = false) -> NSView {
     let check = ActionCheck(localized(en, zh), on: inverse ? !p.bool(key) : p.bool(key)) {
@@ -122,6 +148,15 @@ import UserNotifications
     }
     return check
   }
+  private func columns(_ controls: [NSView], count: Int) -> NSStackView {
+    let columns = (0..<count).map { column in
+      stack(controls.enumerated().filter { $0.offset % count == column }.map(\.element), spacing: 8)
+    }
+    let result = stack(columns, vertical: false, spacing: 16)
+    result.alignment = .top
+    result.distribution = .fillEqually
+    return result
+  }
   private func integer(_ key: String, _ en: String, _ zh: String, _ range: ClosedRange<Int>)
     -> NSView
   {
@@ -149,6 +184,7 @@ import UserNotifications
     let control = ActionPopup(items: items, selected: values.firstIndex(of: p.string(key)) ?? 0) {
       [weak self] index in self?.settings.set(key, values[index])
     }
+    control.widthAnchor.constraint(lessThanOrEqualToConstant: 240).isActive = true
     return row(en, zh, control)
   }
   private func color(_ key: String, _ en: String, _ zh: String) -> NSView {
@@ -159,7 +195,7 @@ import UserNotifications
       })
   }
   private func page(_ en: String, _ zh: String, _ symbol: String, _ controls: [NSView]) {
-    let column = stack(controls, spacing: 16)
+    let column = stack(controls, spacing: 10)
     let document = FlippedView()
     let scroll = NSScrollView()
     document.translatesAutoresizingMaskIntoConstraints = false
@@ -168,13 +204,13 @@ import UserNotifications
     scroll.drawsBackground = false
     scroll.documentView = document
     NSLayoutConstraint.activate([
-      column.leadingAnchor.constraint(equalTo: document.leadingAnchor, constant: 24),
-      column.trailingAnchor.constraint(equalTo: document.trailingAnchor, constant: -24),
-      column.topAnchor.constraint(equalTo: document.topAnchor, constant: 24),
-      column.bottomAnchor.constraint(equalTo: document.bottomAnchor, constant: -24),
+      column.leadingAnchor.constraint(equalTo: document.leadingAnchor, constant: 20),
+      column.trailingAnchor.constraint(equalTo: document.trailingAnchor, constant: -20),
+      column.topAnchor.constraint(equalTo: document.topAnchor, constant: 20),
+      column.bottomAnchor.constraint(equalTo: document.bottomAnchor, constant: -20),
       document.widthAnchor.constraint(equalTo: scroll.contentView.widthAnchor),
     ])
-    for control in controls {
+    for control in controls where !(control is NSButton) {
       control.widthAnchor.constraint(equalTo: column.widthAnchor).isActive = true
     }
     let controller = NSViewController()
@@ -185,6 +221,11 @@ import UserNotifications
     tabs.addTabViewItem(item)
   }
   func rebuild() {
+    rebuilding = true
+    defer {
+      rebuilding = false
+      fitSelectedPage()
+    }
     let selected = tabs.selectedTabViewItemIndex
     for item in tabs.tabViewItems { tabs.removeTabViewItem(item) }
     var general: [NSView] = [heading("Language and application", "语言与应用")]
@@ -203,21 +244,30 @@ import UserNotifications
       ActionButton(localized("Restart Flameshoter", "重新启动 Flameshoter")) { Permissions.restart() },
     ]
     general += [
-      boolean("startupLaunch", "Launch at login", "登录时启动"),
-      boolean("disabledTrayIcon", "Show menu-bar icon", "显示菜单栏图标", inverse: true),
-      boolean(
-        "autoCloseIdleDaemon", "Quit when idle with the menu-bar icon hidden", "隐藏菜单栏图标时闲置自动退出"),
-      boolean("allowMultipleGuiInstances", "Allow simultaneous capture sessions", "允许同时打开多个截图会话"),
-      boolean("showDesktopNotification", "Show save notifications", "显示保存通知"),
-      boolean("showStartupLaunchMessage", "Show a welcome notification", "显示启动通知"),
-      boolean("showAbortNotification", "Notify when a capture is cancelled", "取消截图时通知"),
-      boolean("showHelp", "Show capture instructions", "显示截图操作提示"),
-      boolean("showQuitPrompt", "Confirm before discarding annotations", "丢弃标注前询问"),
+      heading("Application behavior", "应用行为"),
+      columns(
+        [
+          boolean("startupLaunch", "Launch at login", "登录时启动"),
+          boolean("disabledTrayIcon", "Show menu-bar icon", "显示菜单栏图标", inverse: true),
+          boolean(
+            "autoCloseIdleDaemon", "Quit when idle with the menu-bar icon hidden", "隐藏菜单栏图标时闲置自动退出"),
+          boolean(
+            "allowMultipleGuiInstances", "Allow simultaneous capture sessions", "允许同时打开多个截图会话"),
+          boolean("showHelp", "Show capture instructions", "显示截图操作提示"),
+          boolean("showQuitPrompt", "Confirm before discarding annotations", "丢弃标注前询问"),
+        ], count: 2),
+      heading("Notifications", "通知"),
+      columns(
+        [
+          boolean("showDesktopNotification", "Show save notifications", "显示保存通知"),
+          boolean("showStartupLaunchMessage", "Show a welcome notification", "显示启动通知"),
+          boolean("showAbortNotification", "Notify when a capture is cancelled", "取消截图时通知"),
+        ], count: 2),
       heading("Configuration", "配置文件"), fileControls(),
       label(
         localized(
-          "Existing Flameshot INI settings can be imported. Native settings use JSON and no Qt runtime.",
-          "支持导入 Flameshot 的 INI 配置。原生设置使用 JSON，不依赖 Qt 运行库。"), secondary: true),
+          "Import Flameshot INI settings or export a backup.", "可导入 Flameshot 的 INI 配置，也可导出备份。"),
+        secondary: true),
     ]
     page("General", "通用", "gearshape", general)
     page(
@@ -256,8 +306,9 @@ import UserNotifications
           "Enabled tools appear directly around the capture region, in Flameshot order. Shortcuts remain available.",
           "已启用的工具按 Flameshot 原版顺序直接显示在选区周围，隐藏后仍可使用快捷键。"), secondary: true),
     ]
+    var toolChecks: [NSView] = []
     for tool in Tool.toolbarOrder {
-      tools.append(
+      toolChecks.append(
         ActionCheck(toolTitle(tool), on: p.tools.contains(tool)) { [weak self] on in
           self?.settings.update { prefs in
             prefs.tools.removeAll { $0 == tool }
@@ -265,9 +316,10 @@ import UserNotifications
           }
         })
     }
+    tools.append(columns(toolChecks, count: 3))
     tools.append(
       ActionButton(localized("Select all", "全选")) { [weak self] in
-        self?.settings.update { $0.tools = Tool.allCases }
+        self?.settings.update { $0.tools = Tool.toolbarOrder }
         self?.rebuild()
       })
     page("Toolbar", "工具栏", "slider.horizontal.3", tools)
@@ -280,6 +332,7 @@ import UserNotifications
       heading("Color presets", "预设颜色"),
       boolean("predefinedColorPaletteLarge", "Show expanded Apple color presets", "显示扩展的苹果预设色"),
     ]
+    var presetRows: [NSView] = []
     for (index, value) in p.colors.enumerated() {
       let well = ActionColor(color: value.color) { [weak self] color in
         self?.settings.update {
@@ -291,10 +344,12 @@ import UserNotifications
         self?.rebuild()
       }
       remove.isEnabled = p.colors.count > 3
-      colors.append(
+      presetRows.append(
         stack(
-          [label(localized("Color ", "颜色 ") + String(index + 1)), well, remove], vertical: false))
+          [label(localized("Color ", "颜色 ") + String(index + 1)), well, remove, NSView()],
+          vertical: false))
     }
+    colors.append(columns(presetRows, count: 2))
     let add = ActionButton(localized("Add color", "添加颜色")) { [weak self] in
       self?.settings.update { $0.colors.append(.red) }
       self?.rebuild()
@@ -408,7 +463,7 @@ import UserNotifications
       }
       let name = label(shortcutTitle(key))
       name.widthAnchor.constraint(equalToConstant: 220).isActive = true
-      shortcuts.append(stack([name, recorder, clear], vertical: false))
+      shortcuts.append(stack([name, recorder, clear, NSView()], vertical: false, spacing: 12))
     }
     page("Shortcuts", "快捷键", "keyboard", shortcuts)
     tabs.selectedTabViewItemIndex = min(max(0, selected), tabs.tabViewItems.count - 1)
@@ -473,6 +528,7 @@ import UserNotifications
             self?.rebuild()
           }
         },
+        NSView(),
       ], vertical: false)
   }
 }

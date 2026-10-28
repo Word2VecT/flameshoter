@@ -33,9 +33,14 @@ import FlameshoterCore
 
 @MainActor final class ActionButton: NSButton {
   var invoke: (() -> Void)?
+  var secondaryInvoke: (() -> Void)?
+  override func rightMouseDown(with event: NSEvent) {
+    if let secondaryInvoke { secondaryInvoke() } else { super.rightMouseDown(with: event) }
+  }
   convenience init(_ title: String, symbol: String? = nil, action: @escaping () -> Void) {
     self.init(frame: .zero)
     self.title = title
+    setContentHuggingPriority(.required, for: .horizontal)
     bezelStyle = .rounded
     target = self
     self.action = #selector(run)

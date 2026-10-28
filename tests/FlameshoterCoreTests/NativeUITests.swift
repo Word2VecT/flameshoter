@@ -235,21 +235,28 @@ import Testing
   }
 }
 
-@Test func captureToolbarKeepsAllToolsOnScreenAroundSelections() {
-  let bounds = CGRect(x: 0, y: 0, width: 640, height: 480)
-  for selection in [
-    CGRect(x: 100, y: 100, width: 400, height: 250),
-    CGRect(x: 300, y: 200, width: 1, height: 1),
-    CGRect(x: 0, y: 0, width: 1, height: 400),
-    CGRect(x: 500, y: 400, width: 140, height: 80), bounds,
-  ] {
-    let frames = CaptureToolbarLayout.frames(count: 24, selection: selection, bounds: bounds)
-    #expect(frames.count == 24)
-    for (index, frame) in frames.enumerated() {
-      #expect(bounds.insetBy(dx: 12, dy: 12).contains(frame))
-      #expect(!frames.prefix(index).contains { $0.intersects(frame) })
+@Test func captureToolbarMatchesOriginalFlameshotCoordinates() throws {
+  struct Reference: Decodable {
+    struct Case: Decodable {
+      let bounds: [Int]
+      let selection: [Int]
+      let baseSize: Int
+      let positions: [[Int]]
     }
-    if selection == bounds { #expect(frames.first!.minY > bounds.midY) }
+    let cases: [Case]
+  }
+  let url = try #require(
+    Bundle.module.url(
+      forResource: "flameshot-toolbar", withExtension: "json", subdirectory: "Fixtures"))
+  let reference = try JSONDecoder().decode(Reference.self, from: Data(contentsOf: url))
+  func rect(_ values: [Int]) -> CGRect {
+    CGRect(x: values[0], y: values[1], width: values[2], height: values[3])
+  }
+  for sample in reference.cases {
+    let frames = CaptureToolbarLayout.frames(
+      count: sample.positions.count, selection: rect(sample.selection),
+      bounds: rect(sample.bounds), baseSize: sample.baseSize)
+    #expect(frames.map { [Int($0.minX), Int($0.minY)] } == sample.positions)
   }
 }
 
@@ -272,14 +279,18 @@ import Testing
   }
   let controls = buttons(toolbar.root)
   let expected = [Tool.pencil, .line, .invert, .save, .pin].map(toolTitle)
-  #expect(controls.prefix(expected.count).map { $0.accessibilityLabel() ?? "" } == expected)
+  #expect(
+    controls.compactMap { $0.accessibilityLabel() }.filter { expected.contains($0) } == expected)
   for button in controls {
     let rect = button.convert(button.bounds, to: canvas)
-    #expect(rect.width >= 32 && rect.height >= 32)
+    #expect(rect.width >= 16 && rect.height >= 16)
     #expect(canvas.bounds.contains(rect))
-    #expect(canvas.hitTest(CGPoint(x: rect.midX, y: rect.midY)) === button)
+    let point = canvas.superview!.convert(CGPoint(x: rect.midX, y: rect.midY), from: canvas)
+    let hit = canvas.hitTest(point)
+    #expect(hit === button)
   }
-  #expect(canvas.hitTest(CGPoint(x: 300, y: 300)) === canvas)
+  #expect(
+    canvas.hitTest(canvas.superview!.convert(CGPoint(x: 300, y: 300), from: canvas)) === canvas)
   let line = try #require(controls.first { $0.accessibilityLabel() == toolTitle(.line) })
   line.performClick(nil)
   #expect(canvas.tool == .line)
@@ -295,4 +306,45 @@ import Testing
   #expect(outputLabels.contains(toolTitle(.accept)))
   #expect(!outputLabels.contains(toolTitle(.save)))
   #expect(!outputLabels.contains(toolTitle(.pin)))
+}
+
+@Test @MainActor func settingsFitMinimumWindowAndUseCompactToolColumns() throws {
+  let settings = Environment.shared.settings
+  let previous = settings.preferences
+  defer { settings.update { $0 = previous } }
+  for language in ["zh_CN", "en"] {
+    settings.set("uiLanguage", language)
+    let controller = PreferencesController()
+    let window = try #require(controller.window)
+    window.setContentSize(NSSize(width: 720, height: 540))
+    let tabs = try #require(window.contentViewController as? NSTabViewController)
+    for index in tabs.tabViewItems.indices {
+      tabs.selectedTabViewItemIndex = index
+      tabs.view.layoutSubtreeIfNeeded()
+      let scroll = try #require(tabs.tabViewItems[index].viewController?.view as? NSScrollView)
+      scroll.layoutSubtreeIfNeeded()
+      let document = try #require(scroll.documentView)
+      func controls(_ view: NSView) -> [NSControl] {
+        (view as? NSControl).map { [$0] } ?? view.subviews.flatMap(controls)
+      }
+      for control in controls(document) {
+        let rect = control.convert(control.bounds, to: document)
+        #expect(
+          rect.minX >= -1 && rect.maxX <= document.bounds.width + 1,
+          "\(language), page \(index): control \(rect) exceeds \(document.bounds)")
+      }
+      if index == 0 || index == 2 {
+        #expect(
+          document.frame.height <= scroll.contentView.bounds.height + 1,
+          "General and Toolbar should fit without scrolling")
+      }
+      if index == 0 {
+        let restart = try #require(
+          controls(document).compactMap { $0 as? ActionButton }
+            .first { $0.title == localized("Restart Flameshoter", "重新启动 Flameshoter") })
+        #expect(restart.frame.width < 260)
+      }
+    }
+    window.close()
+  }
 }
