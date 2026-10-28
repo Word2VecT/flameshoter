@@ -141,3 +141,33 @@ private func pixels(_ image: CGImage) -> [UInt8] {
   #expect(
     pixels(actual) == pixels(reference.cropping(to: CGRect(x: 5, y: 4, width: 14, height: 13))!))
 }
+
+@Test func shareToolUpgradePreservesPreferencesAndCanStayHidden() throws {
+  let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+  try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+  defer { try? FileManager.default.removeItem(at: root) }
+  let url = root.appendingPathComponent("settings.json")
+  var old = Preferences()
+  old.schemaVersion = 1
+  old.tools = [.pencil, .copy]
+  old.values["drawColor"] = "#123456"
+  old.shortcuts["TYPE_COPY"] = Shortcut(8, [.command, .option])
+  try JSONEncoder().encode(old).write(to: url)
+  let upgraded = SettingsStore(url: url)
+  #expect(upgraded.loadError == nil)
+  #expect(upgraded.preferences.schemaVersion == 2)
+  #expect(upgraded.preferences.tools == [.pencil, .copy, .share])
+  #expect(upgraded.preferences.values == old.values)
+  #expect(upgraded.preferences.shortcuts == old.shortcuts)
+  upgraded.update {
+    $0.tools.removeAll { $0 == .share }
+    $0.shortcuts["TYPE_SHARE"] = Shortcut(1, [.command, .shift])
+  }
+  let reopened = SettingsStore(url: url)
+  #expect(!reopened.preferences.tools.contains(.share))
+  let ini = root.appendingPathComponent("export.ini")
+  try reopened.exportFile(ini)
+  let imported = try SettingsStore.parseINI(String(contentsOf: ini, encoding: .utf8))
+  #expect(imported.shortcut("TYPE_SHARE") == Shortcut(1, [.command, .shift]))
+  #expect(!imported.tools.contains(.share))
+}

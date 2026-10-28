@@ -5,10 +5,15 @@ import FlameshoterCore
 @MainActor final class CaptureWindow: NSWindow {
   weak var canvas: CanvasView?
   weak var captureToolbar: CaptureToolbar?
+  weak var captureSharing: CaptureSharing?
   override var canBecomeKey: Bool { true }
   override var canBecomeMain: Bool { true }
   override func performKeyEquivalent(with event: NSEvent) -> Bool {
     guard self === NSApp.keyWindow else { return super.performKeyEquivalent(with: event) }
+    if let captureSharing {
+      if event.keyCode == 53 { captureSharing.cancelPicker() }
+      return true
+    }
     if captureToolbar?.isInspectorShown == true {
       if event.keyCode == 53 {
         captureToolbar?.dismissInspector()
@@ -34,6 +39,7 @@ import FlameshoterCore
   let command: NativeCommand
   weak var app: AppController?
   private var closing = false
+  private var sharing: CaptureSharing?
   init(frames: [CapturedScreen], command: NativeCommand, app: AppController) {
     self.command = command
     self.app = app
@@ -160,6 +166,8 @@ import FlameshoterCore
   func close(cancelled: Bool = false) {
     guard !closing else { return }
     closing = true
+    sharing?.close()
+    sharing = nil
     if Environment.shared.preferences.bool("saveLastRegion"),
       let r = active.canvas.document.selection
     {
@@ -184,6 +192,46 @@ import FlameshoterCore
     guard !string.isEmpty else { return nil }
     let rect = NSRectFromString(string)
     return rect.isEmpty ? nil : rect
+  }
+  private func share(_ image: CGImage) {
+    guard sharing == nil else { return }
+    let controller = CaptureSharing(image: image)
+    sharing = controller
+    let windowLevels = surfaces.map { $0.window.level }
+    // Let the system share sheet appear above the screenshot overlay.
+    for surface in surfaces {
+      surface.window.captureSharing = controller
+      surface.window.level = .normal
+    }
+    controller.onBegin = { [weak self] in self?.hide() }
+    controller.onFinish = { [weak self] result in
+      // Finish dispatching ShareKit's dismiss event before accepting capture keys again.
+      DispatchQueue.main.async { [weak self] in
+        guard let self, !self.closing else { return }
+        self.sharing = nil
+        for (surface, level) in zip(self.surfaces, windowLevels) {
+          surface.window.captureSharing = nil
+          surface.window.level = level
+        }
+        switch result {
+        case .success(true):
+          self.app?.respond(
+            self.command, image: image, selection: self.active.canvas.document.pixelSelection)
+          self.close()
+        case .success(false): self.show()
+        case .failure(let error):
+          let failure = error as NSError
+          if !(failure.domain == NSCocoaErrorDomain && failure.code == NSUserCancelledError) {
+            warning(localized("Unable to share capture", "无法分享截图"), errorMessage(error))
+          }
+          self.show()
+        }
+      }
+    }
+    let anchor = active.toolbar.button(for: .share) ?? active.canvas
+    controller.show(
+      relativeTo: anchor === active.canvas ? active.canvas.document.selection! : anchor.bounds,
+      of: anchor)
   }
   func perform(_ tool: Tool, on index: Int) {
     guard !closing else { return }
@@ -219,6 +267,9 @@ import FlameshoterCore
     do {
       let image = try canvas.rendered()
       switch tool {
+      case .share:
+        share(image)
+        return
       case .copy:
         try ImageRenderer.copy(
           image, jpeg: Environment.shared.preferences.bool("useJpgForClipboard"),

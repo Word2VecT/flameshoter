@@ -77,6 +77,9 @@ public struct Shortcut: Codable, Equatable, Sendable {
     parts.append(aliases[Self.names[keyCode] ?? ""] ?? Self.names[keyCode] ?? "")
     return parts.joined(separator: "+")
   }
+  public static var bindingNames: [String] {
+    Set(defaults.keys).union(Tool.allCases.map(\.legacyName)).sorted()
+  }
   public static var defaults: [String: Shortcut] {
     var d: [String: Shortcut] = [:]
     let definitions = [

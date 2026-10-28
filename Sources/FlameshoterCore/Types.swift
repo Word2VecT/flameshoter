@@ -63,10 +63,11 @@ public enum Tool: Int, Codable, CaseIterable, Identifiable, Sendable {
   case invert = 22
   case accept = 23
   case clearSelection = 24
-  // getIterableButtonTypes() is the order used by CaptureWidget::initButtons.
+  case share = 25
+  // Preserve Flameshot's getIterableButtonTypes() order, adding native Share after Save.
   public static let toolbarOrder: [Tool] = [
     .pencil, .line, .arrow, .select, .rectangle, .ellipse, .marker, .text,
-    .counter, .pixelate, .invert, .moveSelection, .undo, .redo, .copy, .save,
+    .counter, .pixelate, .invert, .moveSelection, .undo, .redo, .copy, .save, .share,
     .exit, .pin, .sizeIncrease, .sizeDecrease, .accept,
   ]
   public static let defaultToolbar = toolbarOrder.filter {
@@ -90,6 +91,7 @@ public enum Tool: Int, Codable, CaseIterable, Identifiable, Sendable {
     case .undo: return ("Undo", "撤销")
     case .copy: return ("Copy", "复制")
     case .save: return ("Save", "保存")
+    case .share: return ("Share…", "分享…")
     case .exit: return ("Cancel capture", "取消截图")
     case .openWith: return ("Open with…", "使用其他应用打开…")
     case .pixelate: return ("Redact / pixelate", "遮挡 / 马赛克")
@@ -120,6 +122,7 @@ public enum Tool: Int, Codable, CaseIterable, Identifiable, Sendable {
     case .save: return "square.and.arrow.down"
     case .exit: return "xmark"
     case .openWith: return "square.and.arrow.up"
+    case .share: return "square.and.arrow.up"
     case .pixelate: return "square.dashed.inset.filled"
     case .pin: return "pin"
     case .text: return "textformat"
@@ -138,7 +141,7 @@ public enum Tool: Int, Codable, CaseIterable, Identifiable, Sendable {
       .moveSelection: "MOVESELECTION", .undo: "UNDO", .copy: "COPY", .save: "SAVE", .exit: "EXIT",
       .openWith: "OPEN_APP", .pixelate: "PIXELATE", .redo: "REDO", .pin: "PIN", .text: "TEXT",
       .counter: "CIRCLECOUNT", .sizeIncrease: "SIZEINCREASE", .sizeDecrease: "SIZEDECREASE",
-      .invert: "INVERT", .accept: "ACCEPT", .clearSelection: "CANCEL",
+      .invert: "INVERT", .accept: "ACCEPT", .clearSelection: "CANCEL", .share: "SHARE",
     ]
     return "TYPE_" + names[self]!
   }

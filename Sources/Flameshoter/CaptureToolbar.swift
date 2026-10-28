@@ -39,7 +39,7 @@ import FlameshoterCore
     root.setAccessibilityLabel(localized("Annotation toolbar", "标注工具栏"))
     inspectorButton.invoke = { [weak self] in self?.toggleInspector() }
     let outputRequested = command.copy || command.raw || command.path != nil || command.pin
-    let excluded: [Tool] = outputRequested ? [.copy, .save, .openWith, .pin] : [.accept]
+    let excluded: [Tool] = outputRequested ? [.copy, .save, .share, .openWith, .pin] : [.accept]
     for tool in Tool.toolbarOrder where prefs.tools.contains(tool) && !excluded.contains(tool) {
       items.append(glass(makeButton(tool), radius: CGFloat(buttonSize) / 2))
     }
@@ -66,6 +66,7 @@ import FlameshoterCore
   private func makeButton(_ tool: Tool) -> ActionButton {
     let button = ActionButton("", symbol: tool.symbol) { [weak self] in self?.invoke(tool) }
     configure(button)
+    if tool == .share { button.sendAction(on: .leftMouseDown) }
     button.setAccessibilityLabel(toolTitle(tool))
     button.toolTip =
       toolTitle(tool) + (prefs.shortcut(tool.legacyName).map { "  \($0.display)" } ?? "")
@@ -80,6 +81,7 @@ import FlameshoterCore
     buttons[tool] = button
     return button
   }
+  func button(for tool: Tool) -> NSButton? { buttons[tool] }
   private func invoke(_ tool: Tool) {
     if tool.isDrawing || [.select, .moveSelection].contains(tool) {
       canvas?.setTool(tool)

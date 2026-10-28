@@ -426,7 +426,7 @@ import UserNotifications
           "点击后录制新的组合键，Esc 取消。全局快捷键立即生效。"), secondary: true),
     ]
     let keys =
-      ["TAKE_SCREENSHOT"] + Shortcut.defaults.keys.filter { $0 != "TAKE_SCREENSHOT" }.sorted()
+      ["TAKE_SCREENSHOT"] + Shortcut.bindingNames.filter { $0 != "TAKE_SCREENSHOT" }
     for key in keys {
       let recorder = ShortcutRecorder(binding: key)
       recorder.widthAnchor.constraint(equalToConstant: 150).isActive = true

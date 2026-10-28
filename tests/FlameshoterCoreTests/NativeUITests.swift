@@ -348,3 +348,65 @@ import Testing
     window.close()
   }
 }
+
+@Test @MainActor func systemShareUsesRenderedSelectionAndCompletesOnlyAfterSharing() throws {
+  let canvas = CanvasView(frame: nativeFrame())
+  canvas.setSelection(CGRect(x: 100, y: 100, width: 200, height: 120))
+  canvas.add(
+    Annotation(
+      tool: .rectangle,
+      points: [CGPoint(x: 120, y: 120), CGPoint(x: 220, y: 180)], color: .red, width: 4))
+  let image = try canvas.rendered()
+  let controller = CaptureSharing(image: image)
+  let sharedImage = try #require(
+    controller.item.cgImage(forProposedRect: nil, context: nil, hints: nil))
+  #expect(sharedImage.width == image.width && sharedImage.height == image.height)
+  #expect(try ImageRenderer.data(sharedImage) == ImageRenderer.data(image))
+  let service = NSSharingService(
+    title: "Test", image: NSImage(size: NSSize(width: 16, height: 16)),
+    alternateImage: nil, handler: {})
+  var began = 0
+  var finished = 0
+  controller.onBegin = { began += 1 }
+  controller.onFinish = { result in
+    finished += 1
+    #expect((try? result.get()) == true)
+  }
+  #expect(controller.sharingServicePicker(controller.picker, delegateFor: service) === controller)
+  controller.sharingServicePicker(controller.picker, didChoose: service)
+  #expect(began == 1 && finished == 0)
+  // Dismissing the picker after choosing a service must not cancel the service.
+  controller.sharingServicePicker(controller.picker, didChoose: nil)
+  #expect(finished == 0)
+  controller.sharingService(service, didShareItems: [controller.item])
+  controller.sharingService(service, didShareItems: [controller.item])
+  #expect(finished == 1)
+  #expect(controller.picker.delegate == nil)
+}
+
+@Test @MainActor func systemShareCancellationAndFailurePreserveTheCapture() throws {
+  let canvas = CanvasView(frame: nativeFrame())
+  canvas.setSelection(CGRect(x: 100, y: 100, width: 200, height: 120))
+  let original = canvas.document.selection
+  let image = try canvas.rendered()
+  let cancelled = CaptureSharing(image: image)
+  var cancelledCount = 0
+  cancelled.onFinish = { result in
+    #expect((try? result.get()) == false)
+    cancelledCount += 1
+  }
+  cancelled.sharingServicePicker(cancelled.picker, didChoose: nil)
+  cancelled.sharingServicePicker(cancelled.picker, didChoose: nil)
+  #expect(cancelledCount == 1)
+  let failed = CaptureSharing(image: image)
+  let error = CocoaError(.userCancelled)
+  var reported: NSError?
+  failed.onFinish = { if case .failure(let error) = $0 { reported = error as NSError } }
+  let service = NSSharingService(
+    title: "Test", image: NSImage(size: NSSize(width: 16, height: 16)),
+    alternateImage: nil, handler: {})
+  failed.sharingServicePicker(failed.picker, didChoose: service)
+  failed.sharingService(service, didFailToShareItems: [failed.item], error: error)
+  #expect(reported?.domain == NSCocoaErrorDomain && reported?.code == NSUserCancelledError)
+  #expect(canvas.document.selection == original)
+}

@@ -2,7 +2,7 @@
 import AppKit
 
 public struct Preferences: Codable, Equatable, Sendable {
-  public var schemaVersion = 1
+  public var schemaVersion = 2
   public var values: [String: String] = [:]
   public var shortcuts = Shortcut.defaults
   public var unassignedShortcuts: Set<String> = []
@@ -75,6 +75,11 @@ public final class SettingsStore {
       do {
         preferences = try JSONDecoder().decode(Preferences.self, from: Data(contentsOf: url))
         try Self.validate(preferences)
+        if preferences.schemaVersion < 2 {
+          if !preferences.tools.contains(.share) { preferences.tools.append(.share) }
+          preferences.schemaVersion = 2
+          try save()
+        }
       } catch {
         loadError = error
         preferences = Preferences()
@@ -121,7 +126,7 @@ public final class SettingsStore {
   }
   public func exportFile(_ file: URL) throws {
     if file.pathExtension.lowercased() == "ini" {
-      var lines = ["[Native]", "schemaVersion=1", "", "[General]"]
+      var lines = ["[Native]", "schemaVersion=\(preferences.schemaVersion)", "", "[General]"]
       for (key, value) in Preferences.defaults.merging(preferences.values, uniquingKeysWith: { $1 })
         .sorted(by: { $0.key < $1.key })
       { lines.append("\(key)=\(value)") }
@@ -129,7 +134,7 @@ public final class SettingsStore {
         "buttons=" + preferences.tools.map { String($0.rawValue) }.joined(separator: ","),
         "userColors=" + preferences.colors.map(\.hex).joined(separator: ","), "", "[Shortcuts]",
       ]
-      for key in Shortcut.defaults.keys.sorted() {
+      for key in Shortcut.bindingNames {
         lines.append("\(key)=\(preferences.shortcut(key)?.portable ?? "")")
       }
       try lines.joined(separator: "\n").write(to: file, atomically: true, encoding: .utf8)
@@ -176,7 +181,7 @@ public final class SettingsStore {
             recognized = true
           }
         }
-      } else if group == "Shortcuts", Shortcut.defaults[key] != nil {
+      } else if group == "Shortcuts", Shortcut.bindingNames.contains(key) {
         if value.isEmpty {
           result.unassignedShortcuts.insert(key)
         } else if let shortcut = Shortcut(portable: value) {
