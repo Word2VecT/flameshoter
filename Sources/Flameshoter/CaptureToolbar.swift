@@ -67,9 +67,6 @@ import FlameshoterCore
     let button = ActionButton("", symbol: tool.symbol) { [weak self] in self?.invoke(tool) }
     configure(button)
     if tool == .share { button.sendAction(on: .leftMouseDown) }
-    button.setAccessibilityLabel(toolTitle(tool))
-    button.toolTip =
-      toolTitle(tool) + (prefs.shortcut(tool.legacyName).map { "  \($0.display)" } ?? "")
     if tool.isDrawing || [.select, .moveSelection].contains(tool) {
       button.setButtonType(.pushOnPushOff)
       button.secondaryInvoke = { [weak self] in
@@ -93,6 +90,9 @@ import FlameshoterCore
   func refresh() {
     guard let canvas else { return }
     for (tool, button) in buttons {
+      button.setAccessibilityLabel(toolTitle(tool))
+      button.toolTip =
+        toolTitle(tool) + (prefs.shortcut(tool.legacyName).map { "  \($0.display)" } ?? "")
       button.state = canvas.tool == tool ? .on : .off
       button.contentTintColor = canvas.tool == tool ? .controlAccentColor : .labelColor
     }

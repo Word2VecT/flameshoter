@@ -18,7 +18,7 @@ struct NativeCommand: Codable {
   var requestID: String?
   static let usage = """
     Flameshoter — native macOS screenshot and annotation
-    Usage: flameshoter [gui|full|screen|launcher|config] [options]
+    Usage: flameshoter [gui|full|screen|config] [options]
       -p, --path PATH       Save to a directory or image file
       -d, --delay MS        Delay before capture
       -n, --number INDEX    Capture a display (zero-based)
@@ -40,7 +40,7 @@ struct NativeCommand: Codable {
       result.mode = first
       index = 1
     }
-    guard ["gui", "full", "screen", "launcher", "config", "background"].contains(result.mode) else {
+    guard ["gui", "full", "screen", "config", "background"].contains(result.mode) else {
       throw CommandError.argument(result.mode)
     }
     func value() throws -> String {

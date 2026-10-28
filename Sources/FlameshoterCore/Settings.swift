@@ -43,7 +43,7 @@ public struct Preferences: Codable, Equatable, Sendable {
         && (Locale.preferredLanguages.first?.hasPrefix("zh") ?? false))
   }
   public func shortcut(_ key: String) -> Shortcut? {
-    unassignedShortcuts.contains(key) ? nil : shortcuts[key]
+    unassignedShortcuts.contains(key) ? nil : (shortcuts[key] ?? Shortcut.defaults[key])
   }
   public var saveDirectory: URL {
     let path = string("savePath")

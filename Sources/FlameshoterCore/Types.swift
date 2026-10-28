@@ -91,7 +91,7 @@ public enum Tool: Int, Codable, CaseIterable, Identifiable, Sendable {
     case .undo: return ("Undo", "撤销")
     case .copy: return ("Copy", "复制")
     case .save: return ("Save", "保存")
-    case .share: return ("Share…", "分享…")
+    case .share: return ("Share", "分享")
     case .exit: return ("Cancel capture", "取消截图")
     case .openWith: return ("Open with…", "使用其他应用打开…")
     case .pixelate: return ("Redact / pixelate", "遮挡 / 马赛克")

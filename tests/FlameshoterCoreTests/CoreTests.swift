@@ -171,3 +171,14 @@ private func pixels(_ image: CGImage) -> [UInt8] {
   #expect(imported.shortcut("TYPE_SHARE") == Shortcut(1, [.command, .shift]))
   #expect(!imported.tools.contains(.share))
 }
+
+@Test func existingSettingsGainTheShareShortcutWithoutReplacingOverrides() {
+  var preferences = Preferences()
+  preferences.shortcuts.removeValue(forKey: "TYPE_SHARE")
+  #expect(preferences.shortcut("TYPE_SHARE") == Shortcut(1, [.command, .shift]))
+  let custom = Shortcut(1, [.command, .option])
+  preferences.shortcuts["TYPE_SHARE"] = custom
+  #expect(preferences.shortcut("TYPE_SHARE") == custom)
+  preferences.unassignedShortcuts.insert("TYPE_SHARE")
+  #expect(preferences.shortcut("TYPE_SHARE") == nil)
+}

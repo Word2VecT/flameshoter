@@ -57,6 +57,7 @@ import Testing
   #expect(command.copy)
   #expect(command.delay == 2000)
   #expect(throws: CommandError.self) { try NativeCommand.parse(["gui", "--region", "invalid"]) }
+  #expect(throws: CommandError.self) { try NativeCommand.parse(["launcher"]) }
 }
 
 @Test @MainActor func dockFollowsOrdinaryWindowsAndKeepsMenuBarItem() {
@@ -100,6 +101,8 @@ import Testing
   let controller = AppController(command: nil)
   let before = app.windows.count
   #expect(controller.applicationShouldHandleReopen(app, hasVisibleWindows: true) == false)
+  #expect(app.windows.count == before)
+  #expect(controller.applicationShouldHandleReopen(app, hasVisibleWindows: false) == false)
   #expect(app.windows.count == before)
 }
 @Test @MainActor func commonAnnotationToolsEncodeThroughImageIO() throws {
@@ -409,4 +412,31 @@ import Testing
   failed.sharingService(service, didFailToShareItems: [failed.item], error: error)
   #expect(reported?.domain == NSCocoaErrorDomain && reported?.code == NSUserCancelledError)
   #expect(canvas.document.selection == original)
+}
+
+@Test @MainActor func shareTooltipUsesTheCurrentShortcutWithoutEllipsis() throws {
+  let settings = Environment.shared.settings
+  let previous = settings.preferences
+  defer { settings.update { $0 = previous } }
+  settings.update {
+    $0.tools = [.share]
+    $0.shortcuts.removeValue(forKey: "TYPE_SHARE")
+    $0.unassignedShortcuts.remove("TYPE_SHARE")
+  }
+  let canvas = CanvasView(frame: nativeFrame())
+  let toolbar = CaptureToolbar(canvas: canvas)
+  defer { toolbar.close() }
+  let share = try #require(toolbar.button(for: .share))
+  for (language, name) in [("zh_CN", "分享"), ("en", "Share")] {
+    settings.set("uiLanguage", language)
+    toolbar.refresh()
+    #expect(share.accessibilityLabel() == name)
+    #expect(share.toolTip == name + "  ⇧⌘S")
+  }
+  settings.update { $0.shortcuts["TYPE_SHARE"] = Shortcut(1, [.command, .option]) }
+  toolbar.refresh()
+  #expect(share.toolTip == "Share  ⌥⌘S")
+  settings.update { $0.unassignedShortcuts.insert("TYPE_SHARE") }
+  toolbar.refresh()
+  #expect(share.toolTip == "Share")
 }

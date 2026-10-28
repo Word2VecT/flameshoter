@@ -6,7 +6,6 @@ import UserNotifications
 @MainActor final class AppController: NSObject, NSApplicationDelegate, NSMenuItemValidation {
   var initialCommand: NativeCommand?
   private var item: NSStatusItem?
-  private var launcher: NSWindowController?
   private var preferences: PreferencesController?
   private var sessions: [CaptureSession] = []
   private var pins: [PinWindowController] = []
@@ -15,7 +14,6 @@ import UserNotifications
   private let hotkey = GlobalHotkey()
   private var capturePending = false
   private var preparingRestart = false
-  private var delay = 0
   private var standaloneCapture: Bool
   init(command: NativeCommand?) {
     initialCommand = command
@@ -66,7 +64,7 @@ import UserNotifications
     } else {
       UserDefaults.standard.removeObject(forKey: "AppleLanguages")
     }
-    if let command = initialCommand { handle(command) } else { showLauncher(nil) }
+    if let command = initialCommand { handle(command) }
     if Environment.shared.preferences.bool("showStartupLaunchMessage") {
       notify(
         title: localized("Flameshoter is ready", "Flameshoter 已就绪"),
@@ -87,9 +85,7 @@ import UserNotifications
       session.show()
       return false
     }
-    if capturePending { return false }
-    showLauncher(nil)
-    return true
+    return false
   }
   func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
     if !preparingRestart
@@ -177,7 +173,6 @@ import UserNotifications
     displayItem.submenu = displays
     menu.addItem(displayItem)
     menu.addItem(.separator())
-    add(menu, localized("Open launcher…", "打开启动窗口…"), #selector(showLauncher(_:)))
     add(menu, localized("Settings…", "设置…"), #selector(showPreferences(_:)), symbol: "gearshape")
     add(menu, localized("About Flameshoter", "关于 Flameshoter"), #selector(showAbout(_:)))
     menu.addItem(.separator())
@@ -280,9 +275,7 @@ import UserNotifications
   }
   @objc func quit(_ sender: Any?) { NSApp.terminate(nil) }
   @objc func capture(_ sender: Any?) {
-    var command = NativeCommand()
-    command.delay = delay
-    handle(command)
+    handle(NativeCommand())
   }
   @objc private func captureDisplay(_ sender: NSMenuItem) {
     var command = NativeCommand()
@@ -300,9 +293,6 @@ import UserNotifications
   }
   func handle(_ command: NativeCommand) {
     switch command.mode {
-    case "launcher":
-      showLauncher(nil)
-      respond(command)
     case "config":
       showPreferences(nil)
       respond(command)
@@ -323,7 +313,6 @@ import UserNotifications
       return
     }
     capturePending = true
-    launcher?.window?.orderOut(nil)
     preferences?.window?.orderOut(nil)
     Task { @MainActor [weak self] in
       guard let self else { return }
@@ -344,7 +333,6 @@ import UserNotifications
         if !(error is CaptureError) {
           warning(localized("Capture failed", "截图失败"), errorMessage(error))
         }
-        if command.requestID == nil { self.showLauncher(nil) }
       }
     }
   }
@@ -463,65 +451,6 @@ import UserNotifications
       identifier: UUID().uuidString, content: content, trigger: nil)
     UNUserNotificationCenter.current().add(request)
   }
-  @objc func showLauncher(_ sender: Any?) {
-    if launcher == nil {
-      let window = NSWindow(
-        contentRect: NSRect(x: 0, y: 0, width: 500, height: 410),
-        styleMask: [.titled, .closable, .miniaturizable], backing: .buffered, defer: false)
-      window.title = "Flameshoter"
-      window.isReleasedWhenClosed = false
-      window.center()
-      window.setFrameAutosaveName("FlameshoterLauncher")
-      let heading = label("Flameshoter", size: 34)
-      heading.font = .systemFont(ofSize: 34, weight: .bold)
-      let subtitle = label(
-        localized("Capture, annotate, and share.", "截图、标注，轻松分享。"), secondary: true, size: 17)
-      let description = label(
-        localized(
-          "Select a region, then annotate it with native macOS controls. Your screenshots stay on your Mac.",
-          "拖动选择截图区域，再使用原生 macOS 工具进行标注。截图保存在你的 Mac 上。"), secondary: true)
-      let delays = ActionPopup(
-        items: [
-          localized("No delay", "无延迟"), localized("1 second", "1 秒"), localized("3 seconds", "3 秒"),
-          localized("5 seconds", "5 秒"),
-          localized("10 seconds", "10 秒"),
-        ], selected: 0
-      ) { [weak self] index in self?.delay = [0, 1000, 3000, 5000, 10000][index] }
-      let content = stack([
-        heading, subtitle, description,
-        stack([label(localized("Delay", "延迟")), delays], vertical: false),
-        stack(
-          [
-            ActionButton(localized("Capture region", "截取区域"), symbol: "viewfinder") { [weak self] in
-              self?.capture(nil)
-            },
-            ActionButton(localized("Settings…", "设置…"), symbol: "gearshape") { [weak self] in
-              self?.showPreferences(nil)
-            },
-          ], vertical: false),
-        ActionButton(localized("Try annotation tools", "试用标注工具"), symbol: "pencil.tip") {
-          [weak self] in
-          self?.demo(nil)
-        },
-        label(
-          localized(
-            "Close this window to keep Flameshoter in the menu bar.", "关闭此窗口后，Flameshoter 会继续驻留菜单栏。"
-          ), secondary: true),
-      ])
-      let root = NSView()
-      root.addSubview(content)
-      NSLayoutConstraint.activate([
-        content.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: 28),
-        content.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -28),
-        content.topAnchor.constraint(equalTo: root.topAnchor, constant: 24),
-      ])
-      window.contentView = root
-      launcher = NSWindowController(window: window)
-    }
-    launcher?.showWindow(nil)
-    launcher?.window?.makeKeyAndOrderFront(nil)
-    NSApp.activate()
-  }
   @objc func showPreferences(_ sender: Any?) {
     for session in sessions { session.hide() }
     if preferences == nil { preferences = PreferencesController() }
@@ -533,7 +462,7 @@ import UserNotifications
     NSApp.orderFrontStandardAboutPanel(options: [
       .applicationName: "Flameshoter",
       .applicationVersion: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString")
-        as? String ?? "0.2.5",
+        as? String ?? "0.2.6",
       .version: localized(
         "Native Swift / AppKit · Based on Flameshot", "原生 Swift / AppKit · 基于 Flameshot"),
       .credits: NSAttributedString(
