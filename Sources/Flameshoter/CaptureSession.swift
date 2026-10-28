@@ -40,6 +40,7 @@ import FlameshoterCore
   weak var app: AppController?
   private var closing = false
   private var sharing: CaptureSharing?
+  private var exporting = false
   init(frames: [CapturedScreen], command: NativeCommand, app: AppController) {
     self.command = command
     self.app = app
@@ -234,7 +235,14 @@ import FlameshoterCore
       of: anchor)
   }
   func perform(_ tool: Tool, on index: Int) {
-    guard !closing else { return }
+    guard !closing, !exporting else { return }
+    exporting = true
+    Task {
+      defer { exporting = false }
+      await performAction(tool, on: index)
+    }
+  }
+  private func performAction(_ tool: Tool, on index: Int) async {
     activeIndex = index
     let canvas = active.canvas
     if tool == .exit {
@@ -251,36 +259,34 @@ import FlameshoterCore
     }
     if tool == .select {  // Native screen color sampler, invoked by the pick-color shortcut.
       hide()
-      NSColorSampler().show { [weak self] color in
-        Task { @MainActor in
-          guard let self else { return }
-          if let color {
-            Environment.shared.settings.set("drawColor", RGBA(color).hex)
-            self.active.canvas.applyStyle { $0.color = RGBA(color) }
-          }
-          self.show()
-        }
+      if let color = await NSColorSampler().sample() {
+        Environment.shared.settings.set("drawColor", RGBA(color).hex)
+        canvas.applyStyle { $0.color = RGBA(color) }
       }
+      show()
       return
     }
     guard canvas.document.selection != nil else { return }
     do {
       let image = try canvas.rendered()
+      let selection = canvas.document.pixelSelection
       switch tool {
       case .share:
         share(image)
         return
       case .copy:
-        try ImageRenderer.copy(
+        hide()
+        try await ImageRenderer.copy(
           image, jpeg: Environment.shared.preferences.bool("useJpgForClipboard"),
-          quality: Environment.shared.preferences.integer("jpegQuality"))
+          quality: Environment.shared.preferences.integer("jpegQuality"),
+          optimize: Environment.shared.preferences.bool("losslessCompression"))
         if Environment.shared.preferences.bool("saveAfterCopy") {
-          hide()
-          _ = try Files.save(image, path: command.path, filename: command.filename)
+          _ = try await Files.save(image, path: command.path, filename: command.filename)
         }
       case .save:
         hide()
-        guard let url = try Files.save(image, path: command.path, filename: command.filename) else {
+        guard let url = try await Files.save(image, path: command.path, filename: command.filename)
+        else {
           show()
           return
         }
@@ -289,28 +295,29 @@ import FlameshoterCore
         app?.pin(image, screen: active.screen)
       case .openWith:
         hide()
-        guard try Files.openWith(image) else {
+        guard try await Files.openWith(image) else {
           show()
           return
         }
       case .accept:
         if let path = command.path {
           hide()
-          guard let url = try Files.save(image, path: path, filename: command.filename) else {
+          guard let url = try await Files.save(image, path: path, filename: command.filename) else {
             show()
             return
           }
           app?.notifySaved(url)
         }
         if command.copy || (!command.raw && command.path == nil && !command.pin) {
-          try ImageRenderer.copy(
+          try await ImageRenderer.copy(
             image, jpeg: Environment.shared.preferences.bool("useJpgForClipboard"),
-            quality: Environment.shared.preferences.integer("jpegQuality"))
+            quality: Environment.shared.preferences.integer("jpegQuality"),
+            optimize: Environment.shared.preferences.bool("losslessCompression"))
         }
         if command.pin { app?.pin(image, screen: active.screen) }
       default: return
       }
-      app?.respond(command, image: image, selection: canvas.document.pixelSelection)
+      app?.respond(command, image: image, selection: selection)
       close()
     } catch {
       hide()

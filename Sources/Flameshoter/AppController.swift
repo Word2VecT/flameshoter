@@ -322,7 +322,7 @@ import UserNotifications
         let frames = try await CaptureService.capture(
           displayIndex: command.display, fixture: fixture)
         if command.mode == "full" || command.mode == "screen" {
-          try self.completeDirect(command, frames: frames)
+          try await self.completeDirect(command, frames: frames)
           return
         }
         let session = CaptureSession(frames: frames, command: command, app: self)
@@ -336,7 +336,7 @@ import UserNotifications
       }
     }
   }
-  private func completeDirect(_ command: NativeCommand, frames: [CapturedScreen]) throws {
+  private func completeDirect(_ command: NativeCommand, frames: [CapturedScreen]) async throws {
     guard let frame = frames.first else { throw CaptureError.display }
     let (source, size) =
       try command.mode == "full"
@@ -349,13 +349,14 @@ import UserNotifications
     }
     let image = try ImageRenderer.render(document)
     if command.copy {
-      try ImageRenderer.copy(
+      try await ImageRenderer.copy(
         image, jpeg: Environment.shared.preferences.bool("useJpgForClipboard"),
-        quality: Environment.shared.preferences.integer("jpegQuality"))
+        quality: Environment.shared.preferences.integer("jpegQuality"),
+        optimize: Environment.shared.preferences.bool("losslessCompression"))
     }
     if command.pin { pin(image, screen: frame.screen) }
     if command.path != nil || (!command.copy && !command.raw && !command.pin) {
-      if let url = try Files.save(
+      if let url = try await Files.save(
         image, path: command.path ?? Environment.shared.preferences.saveDirectory.path,
         filename: command.filename)
       {
@@ -462,7 +463,7 @@ import UserNotifications
     NSApp.orderFrontStandardAboutPanel(options: [
       .applicationName: "Flameshoter",
       .applicationVersion: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString")
-        as? String ?? "0.2.6",
+        as? String ?? "0.2.7",
       .version: localized(
         "Native Swift / AppKit · Based on Flameshot", "原生 Swift / AppKit · 基于 Flameshot"),
       .credits: NSAttributedString(

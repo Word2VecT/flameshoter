@@ -4,6 +4,9 @@ Flameshoter is a GPL-3.0-or-later derivative of [Flameshot](https://github.com/f
 
 Version 0.2.0 replaces the C++ / Qt implementation with Swift and public macOS frameworks. Qt, Qt Color Widgets, KDSingleApplication and QHotkey are no longer built, linked or distributed. Earlier source and notices are recoverable from Git history, including commit `3ddd2b1` before the native migration.
 
-The native application has no external Swift packages or bundled third-party frameworks. It uses Apple AppKit, ScreenCaptureKit, Core Graphics, Core Image, ImageIO, Carbon HotKey, ServiceManagement and UserNotifications. Apple frameworks, SF Symbols, Icon Composer and the asset compiler remain governed by Apple's terms; development tools are not redistributed with the application.
+The native application has no external Swift packages or bundled third-party frameworks. It uses Apple AppKit, ScreenCaptureKit, Core Graphics, Core Image, ImageIO, Accelerate, Carbon HotKey, ServiceManagement and UserNotifications. Apple frameworks, SF Symbols, Icon Composer and the asset compiler remain governed by Apple's terms; development tools are not redistributed with the application.
+
+- [OxiPNG 10.2.1](https://github.com/oxipng/oxipng/tree/v10.2.1) provides lossless PNG optimization under the MIT license. The official arm64 release executable is embedded and signed with the application; `scripts/prepare-image-tools.py` pins its archive URL and SHA-256. Its license is included as `licenses/oxipng-MIT.txt`.
+- [libwebp 1.6.0](https://github.com/webmproject/libwebp/tree/v1.6.0), by Google and the WebM project contributors, provides lossless WebP encoding and container metadata. Unmodified C sources in `Vendor/libwebp` are compiled statically. BSD license, patent grant and authors are included in `licenses/libwebp-COPYING`, `licenses/libwebp-PATENTS` and `licenses/libwebp-AUTHORS`.
 
 The complete release source and build scripts are available at https://github.com/Word2VecT/flameshoter. See LICENSE for GPL-3.0-or-later terms.

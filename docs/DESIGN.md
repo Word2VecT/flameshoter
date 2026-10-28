@@ -1,6 +1,6 @@
 # Native macOS design
 
-Version 0.2.0 is a Swift package with no external dependencies. FlameshoterCore owns preferences, legacy INI migration, shortcuts, image coordinates, annotations and export. Flameshoter owns the AppKit lifecycle, ScreenCaptureKit capture, canvas input, native controls and command bridge.
+Flameshoter is a native Swift package. FlameshoterCore owns preferences, legacy INI migration, shortcuts, image coordinates, annotations and export. Flameshoter owns the AppKit lifecycle, ScreenCaptureKit capture, canvas input, native controls and command bridge. Vendored libwebp C sources supply lossless WebP encoding; an embedded OxiPNG executable supplies PNG optimization.
 
 ## Materials and controls
 
@@ -27,7 +27,9 @@ SCScreenshotManager captures each display in SDR at its backing scale and exclud
 
 The annotation model, region gestures and drawing algorithms are application content. Apple does not expose a public complete screenshot annotation editor. Core Graphics draws shapes and text, and Core Image supplies pixelation and inversion. Native UndoManager records editing operations. The text editor uses NSTextView for Chinese input, selection and system editing commands.
 
-Preview and export share the annotation renderer. Unannotated exports return a direct rectangular CGImage crop without material, scaling or color conversion. Annotated exports draw on the original image, then crop. Rounded preview corners never discard corner pixels in output. Apple ImageIO provides supported encoders. Default redaction samples only the exterior fringe; traditional pixelation is explicitly optional.
+Preview and export share the annotation renderer. Unannotated exports return a direct rectangular CGImage crop without material, scaling or color conversion. Annotated exports draw on the original image, then crop. Rounded preview corners never discard corner pixels in output. Apple ImageIO provides PNG, JPEG, TIFF and BMP encoders. Default redaction samples only the exterior fringe; traditional pixelation is explicitly optional.
+
+PNG exports and clipboard bytes optionally pass through OxiPNG at level 2, with two workers and a two-second search budget, preserving metadata and hidden RGB values. Only a smaller result replaces the original. WebP uses libwebp's lossless encoder with `exact=1` and embeds the original ICC profile; optimization compares methods 0 and 4 and keeps the smaller result. With optimization off, WebP stays lossless and uses method 0. Higher-than-8-bit inputs are rejected for WebP rather than silently reduced. JPEG retains its separate quality setting; TIFF and BMP retain their normal encoders. Encoding runs outside the main actor before saving or publishing clipboard data. No screenshot is sent to an external service.
 
 ## Lifecycle, settings and distribution
 

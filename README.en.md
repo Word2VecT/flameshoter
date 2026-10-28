@@ -25,6 +25,7 @@
 - Region capture, multiple displays and delayed captures.
 - In-app annotation: pencil, lines, arrows, shapes, text, numbers and redaction.
 - Copy, save, pin and share through the macOS share sheet.
+- Automatic lossless PNG optimization before saving or copying, plus lossless WebP export. Optimization can be disabled in Settings.
 - English, Simplified Chinese and customizable shortcuts.
 - Native Apple Liquid Glass interface.
 

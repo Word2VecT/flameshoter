@@ -52,16 +52,17 @@ def audit(app):
     binary = app / 'Contents/MacOS/Flameshoter'
     info = plistlib.loads((app / 'Contents/Info.plist').read_bytes())
     minimum = tuple(map(int, (info['LSMinimumSystemVersion'].split('.') + ['0', '0'])[:3]))
-    load = subprocess.check_output(['/usr/bin/otool', '-l', str(binary)], text=True)
-    for version in re.findall(r'\bminos (\d+(?:\.\d+)+)', load):
-        if tuple(map(int, (version.split('.') + ['0', '0'])[:3])) > minimum:
-            raise RuntimeError(f'Executable requires macOS {version}, above its declared minimum')
-    for line in subprocess.check_output(['/usr/bin/otool', '-L', str(binary)], text=True).splitlines()[1:]:
-        dependency = line.strip().split(' (', 1)[0]
-        if 'Qt' in dependency:
-            raise RuntimeError(f'Qt dependency remains: {dependency}')
-        if not dependency.startswith(('/System/Library/', '/usr/lib/', '@rpath/libswift')):
-            raise RuntimeError(f'Non-system dependency: {dependency}')
+    for executable in macho_files(app):
+        load = subprocess.check_output(['/usr/bin/otool', '-l', str(executable)], text=True)
+        for version in re.findall(r'\bminos (\d+(?:\.\d+)+)', load):
+            if tuple(map(int, (version.split('.') + ['0', '0'])[:3])) > minimum:
+                raise RuntimeError(f'{executable.name} requires macOS {version}, above its declared minimum')
+        for line in subprocess.check_output(['/usr/bin/otool', '-L', str(executable)], text=True).splitlines()[1:]:
+            dependency = line.strip().split(' (', 1)[0]
+            if 'Qt' in dependency:
+                raise RuntimeError(f'Qt dependency remains: {dependency}')
+            if not dependency.startswith(('/System/Library/', '/usr/lib/', '@rpath/libswift')):
+                raise RuntimeError(f'Non-system dependency: {dependency}')
     if (app / 'Contents/Frameworks').exists():
         raise RuntimeError('Native release must not bundle third-party frameworks')
     for locale in ['en', 'zh-Hans']:
@@ -91,6 +92,10 @@ def main():
         executable.parent.mkdir(parents=True)
         shutil.copyfile(args.binary, executable)
         executable.chmod(0o755)
+        optimizer = Path(subprocess.check_output(
+            ['python3', str(source / 'scripts/prepare-image-tools.py')], text=True).strip())
+        shutil.copyfile(optimizer, executable.parent / 'oxipng')
+        (executable.parent / 'oxipng').chmod(0o755)
         version = (source / 'VERSION').read_text().strip()
         revision = subprocess.check_output(['git', 'rev-parse', '--short', 'HEAD'], cwd=source, text=True).strip()
         info = {
@@ -121,6 +126,7 @@ def main():
         if not (resources / 'Assets.car').is_file():
             raise RuntimeError('Compile the Icon Composer document with Apple actool')
         shutil.copytree(source / 'licenses', resources / 'licenses', copy_function=copy_without_xattrs)
+        shutil.copyfile(optimizer.parent / 'LICENSE', resources / 'licenses/oxipng-MIT.txt')
         for name in ['LICENSE', 'THIRD_PARTY.md']:
             shutil.copyfile(source / name, resources / name)
         audit(app)
@@ -136,6 +142,11 @@ def main():
         capture = subprocess.check_output([str(link), 'full', '--raw'], env=environment, timeout=30)
         if not capture.startswith(b'\x89PNG\r\n\x1a\n'):
             raise RuntimeError('The standalone CLI did not return a PNG')
+        for extension, magic in [('png', b'\x89PNG\r\n\x1a\n'), ('webp', b'RIFF')]:
+            saved = stage / f'fixture.{extension}'
+            run(link, 'full', '--path', saved, env=environment, timeout=30)
+            if not saved.read_bytes().startswith(magic):
+                raise RuntimeError(f'The packaged CLI could not export {extension}')
         print('Homebrew-style CLI link and standalone fixture capture passed')
         args.out.parent.mkdir(parents=True, exist_ok=True)
         run('/usr/bin/ditto', '-c', '-k', '--norsrc', '--noextattr', '--keepParent', app, args.out)

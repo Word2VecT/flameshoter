@@ -9,12 +9,13 @@ import UniformTypeIdentifiers
     let supported = CGImageDestinationCopyTypeIdentifiers() as? [String] ?? []
     return [
       ("png", "PNG", UTType.png), ("jpeg", "JPEG", .jpeg), ("tiff", "TIFF", .tiff),
-      ("bmp", "BMP", .bmp), ("webp", "WebP", .webP),
+      ("bmp", "BMP", .bmp),
     ].filter { supported.contains($0.2.identifier) }
+      + [("webp", localized("WebP (lossless)", "WebP（无损）"), .webP)]
   }
   static func save(
     _ image: CGImage, path: String? = nil, filename: String? = nil, forceDialog: Bool = false
-  ) throws -> URL? {
+  ) async throws -> URL? {
     let preferences = Environment.shared.preferences
     var format = preferences.string("saveAsFileExtension")
     if format == "jpg" { format = "jpeg" }
@@ -58,8 +59,9 @@ import UniformTypeIdentifiers
       guard panel.runModal() == .OK, let chosen = panel.url else { return nil }
       url = chosen
     }
-    let data = try ImageRenderer.data(
-      image, format: format, quality: preferences.integer("jpegQuality"))
+    let data = try await ImageEncoder.encode(
+      image, format: format, quality: preferences.integer("jpegQuality"),
+      optimize: preferences.bool("losslessCompression"))
     try data.write(to: url, options: .atomic)
     Environment.shared.settings.set("savePath", url.deletingLastPathComponent().path)
     if preferences.bool("copyPathAfterSave") {
@@ -77,7 +79,7 @@ import UniformTypeIdentifiers
     }
     return result
   }
-  static func openWith(_ image: CGImage) throws -> Bool {
+  static func openWith(_ image: CGImage) async throws -> Bool {
     let panel = NSOpenPanel()
     panel.title = localized("Open capture with an application", "使用其他应用打开截图")
     panel.prompt = localized("Open", "打开")
@@ -91,7 +93,9 @@ import UniformTypeIdentifiers
       if file == nil {
         let url = FileManager.default.temporaryDirectory.appendingPathComponent(
           "flameshoter-\(UUID().uuidString).png")
-        try ImageRenderer.data(image).write(to: url, options: .atomic)
+        try await ImageEncoder.encode(
+          image, optimize: Environment.shared.preferences.bool("losslessCompression")
+        ).write(to: url, options: .atomic)
         file = url
       }
       let configuration = NSWorkspace.OpenConfiguration()

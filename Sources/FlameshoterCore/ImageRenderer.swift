@@ -236,28 +236,14 @@ public enum ImageError: LocalizedError {
   public static func data(_ image: CGImage, format: String = "png", quality: Int = 75) throws
     -> Data
   {
-    let type: UTType
-    switch format.lowercased() {
-    case "png": type = .png
-    case "jpg", "jpeg": type = .jpeg
-    case "tif", "tiff": type = .tiff
-    case "bmp": type = .bmp
-    case "webp": type = .webP
-    default: throw ImageError.unsupportedFormat
-    }
-    let data = NSMutableData()
-    guard
-      let destination = CGImageDestinationCreateWithData(data, type.identifier as CFString, 1, nil)
-    else { throw ImageError.unsupportedFormat }
-    CGImageDestinationAddImage(
-      destination, image,
-      [kCGImageDestinationLossyCompressionQuality: Double(quality) / 100] as CFDictionary)
-    guard CGImageDestinationFinalize(destination) else { throw ImageError.encodeFailed }
-    return data as Data
+    try ImageEncoder.data(image, format: format, quality: quality)
   }
-  public static func copy(_ image: CGImage, jpeg: Bool = false, quality: Int = 75) throws {
-    let data = try self.data(image, format: jpeg ? "jpeg" : "png", quality: quality)
-    let board = NSPasteboard.general
+  public static func copy(
+    _ image: CGImage, jpeg: Bool = false, quality: Int = 75, optimize: Bool = true,
+    to board: NSPasteboard = .general
+  ) async throws {
+    let data = try await ImageEncoder.encode(
+      image, format: jpeg ? "jpeg" : "png", quality: quality, optimize: optimize)
     board.clearContents()
     board.setData(data, forType: jpeg ? NSPasteboard.PasteboardType(UTType.jpeg.identifier) : .png)
   }

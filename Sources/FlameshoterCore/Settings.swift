@@ -22,6 +22,7 @@ public struct Preferences: Codable, Equatable, Sendable {
     "predefinedColorPaletteLarge": "false", "savePath": "", "savePathFixed": "false",
     "filenamePattern": "%F_%H-%M-%S", "saveAsFileExtension": "png", "jpegQuality": "75",
     "saveAfterCopy": "false", "copyPathAfterSave": "false", "useJpgForClipboard": "false",
+    "losslessCompression": "true",
     "keepOpenAppLauncher": "false", "drawThickness": "3", "drawRectangleSize": "2",
     "drawMarkerSize": "16", "drawFontSize": "24", "drawCircleCounterSize": "28",
     "drawPixelateSize": "12", "fontFamily": "", "drawCircleCounterOutline": "true",

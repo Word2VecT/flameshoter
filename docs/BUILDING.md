@@ -8,7 +8,7 @@ The macOS UI requires a macOS 26+ SDK; releases use the Xcode 27 toolchain with 
 
 ## Build and test
 
-Install Swift 6.2 or newer with Apple's macOS 26+ SDK. The package contains no external dependencies. Qt, CMake, Ninja, aqt and Homebrew development libraries are not needed.
+Install Swift 6.2 or newer with Apple's macOS 26+ SDK. Qt, CMake, Ninja, aqt and Homebrew development libraries are not needed. libwebp 1.6.0 is vendored as C sources and linked statically by SwiftPM. Tests and packaging cache the official OxiPNG 10.2.1 arm64 executable after checking its pinned SHA-256; no Rust toolchain is needed. The packaged app includes the optimizer and works offline without Homebrew libraries or tools.
 
 ```sh
 ./scripts/test-native.sh
@@ -18,7 +18,7 @@ Install Swift 6.2 or newer with Apple's macOS 26+ SDK. The package contains no e
 
 Swift caches and signing stages live outside cloud-synced Documents folders, which can add Finder metadata that invalidates code signatures. Override FLAMESHOTER_BUILD_DIR or FLAMESHOTER_TEST_BUILD_DIR when needed. FLAMESHOTER_CONFIGURATION selects the build configuration (default release).
 
-The package script assembles the native app, compiles Flameshoter.icon with Apple's actool, includes English and Chinese resources and GPL provenance, audits runtime dependencies and minimum OS, signs the app, verifies it and executes the packaged CLI before writing a ZIP.
+The package script assembles the native app, compiles Flameshoter.icon with Apple's actool, includes English and Chinese resources and third-party licenses, audits runtime dependencies and minimum OS, signs both the optimizer and app, verifies them and executes PNG and WebP fixture exports through the packaged CLI before writing a ZIP.
 
 With Command Line Tools alone, reuse Assets.car and Flameshoter.icns from a previous official release or the **Compile Liquid Glass icon** workflow:
 

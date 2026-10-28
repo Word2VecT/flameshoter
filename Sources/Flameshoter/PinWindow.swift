@@ -105,20 +105,27 @@ import FlameshoterCore
         height: size.height), display: true)
   }
   @objc func copyImage(_ sender: Any?) {
-    do {
-      try ImageRenderer.copy(
-        image, jpeg: Environment.shared.preferences.bool("useJpgForClipboard"),
-        quality: Environment.shared.preferences.integer("jpegQuality"))
-    } catch { warning(localized("Copy failed", "复制失败"), errorMessage(error), window: window) }
+    Task {
+      do {
+        try await ImageRenderer.copy(
+          image, jpeg: Environment.shared.preferences.bool("useJpgForClipboard"),
+          quality: Environment.shared.preferences.integer("jpegQuality"),
+          optimize: Environment.shared.preferences.bool("losslessCompression"))
+      } catch { warning(localized("Copy failed", "复制失败"), errorMessage(error), window: window) }
+    }
   }
   @objc func saveImage(_ sender: Any?) {
-    do { _ = try Files.save(image, forceDialog: true) } catch {
-      warning(localized("Save failed", "保存失败"), errorMessage(error), window: window)
+    Task {
+      do { _ = try await Files.save(image, forceDialog: true) } catch {
+        warning(localized("Save failed", "保存失败"), errorMessage(error), window: window)
+      }
     }
   }
   @objc func openImage(_ sender: Any?) {
-    do { _ = try Files.openWith(image) } catch {
-      warning(localized("Open failed", "打开失败"), errorMessage(error), window: window)
+    Task {
+      do { _ = try await Files.openWith(image) } catch {
+        warning(localized("Open failed", "打开失败"), errorMessage(error), window: window)
+      }
     }
   }
   @objc func actualSize(_ sender: Any?) { window?.setContentSize(naturalSize) }

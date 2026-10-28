@@ -389,6 +389,11 @@ import UserNotifications
         popup(
           "saveAsFileExtension", "Image format", "图片格式", formats.map(\.1), values: formats.map(\.0)),
         integer("jpegQuality", "JPEG quality", "JPEG 质量", 0...100),
+        boolean("losslessCompression", "Automatically compress losslessly", "自动无损压缩"),
+        label(
+          localized(
+            "Optimize PNG and lossless WebP before saving or copying, preserving pixels and color profiles. JPEG quality is set separately.",
+            "保存或复制前优化 PNG 与无损 WebP，保留像素和色彩配置。JPEG 质量单独设置。"), secondary: true),
         boolean("saveAfterCopy", "Also save after copying", "复制后同时保存"),
         boolean("copyPathAfterSave", "Copy the path after saving", "保存后复制路径"),
         boolean("useJpgForClipboard", "Use JPEG on the clipboard", "以 JPEG 格式复制到剪贴板"),
