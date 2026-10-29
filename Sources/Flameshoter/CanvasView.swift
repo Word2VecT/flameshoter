@@ -85,7 +85,7 @@ import FlameshoterCore
     frost.setAccessibilityElement(false)
     addSubview(frost)
     selectionGlass.style = .clear
-    selectionGlass.cornerRadius = 12
+    selectionGlass.cornerRadius = 0
     selectionGlass.contentView = glassContent
     selectionGlass.isHidden = true
     selectionGlass.setAccessibilityElement(false)
