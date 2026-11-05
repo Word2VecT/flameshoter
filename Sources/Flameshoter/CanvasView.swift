@@ -58,6 +58,7 @@ import FlameshoterCore
   private var tracking: NSTrackingArea?
   private var dimensionsTimer: Timer?
   private var lastPresentation: CGRect?
+  private var renderedAnnotations: [Annotation] = []
   private var operation: DragOperation?
   private var originalAnnotations: [Annotation]?
   private var prefs: Preferences { Environment.shared.preferences }
@@ -96,7 +97,7 @@ import FlameshoterCore
     glassContent.clipsToBounds = true
     imageClip.wantsLayer = true
     imageClip.layer?.masksToBounds = true
-    imageClip.layer?.cornerRadius = 10
+    imageClip.layer?.cornerRadius = 0
     selectedImage.image = NSImage(cgImage: document.image, size: document.logicalSize)
     selectedImage.imageScaling = .scaleAxesIndependently
     imageClip.addSubview(selectedImage)
@@ -183,8 +184,12 @@ import FlameshoterCore
     if let preview {
       composed.replaceAnnotations(composed.annotations + [preview], recordingUndo: false)
     }
-    if let image = try? ImageRenderer.render(composed, includeSelection: false) {
+    // Moving the selection does not change the full-screen annotation preview.
+    if composed.annotations != renderedAnnotations,
+      let image = try? ImageRenderer.render(composed, includeSelection: false)
+    {
       selectedImage.image = NSImage(cgImage: image, size: document.logicalSize)
+      renderedAnnotations = composed.annotations
     }
     drawing.needsDisplay = true
   }

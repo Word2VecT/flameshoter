@@ -152,13 +152,15 @@ import FlameshoterCore
   ])
   return parent
 }
-@MainActor func glass(_ view: NSView, interactive: Bool = true, radius: CGFloat = 24)
+@MainActor func glass(
+  _ view: NSView, interactive: Bool = true, radius: CGFloat = 24, inset: CGFloat = 8
+)
   -> NSGlassEffectView
 {
   let result = NSGlassEffectView()
   result.style = .regular
   result.cornerRadius = radius
-  let content = padded(view, inset: 8)
+  let content = padded(view, inset: inset)
   result.contentView = content
   result.translatesAutoresizingMaskIntoConstraints = false
   let size = content.fittingSize

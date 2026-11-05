@@ -49,6 +49,76 @@ import Testing
   canvas.edits.redo()
   #expect(canvas.document.annotations == [original])
 }
+
+@Test @MainActor func capturePreviewTracksAnnotationEditsAndSelectionChanges() throws {
+  let canvas = CanvasView(frame: nativeFrame())
+  let window = CaptureWindow(
+    contentRect: canvas.bounds, styleMask: .borderless, backing: .buffered, defer: false)
+  window.isReleasedWhenClosed = false
+  window.contentView = canvas
+  defer { window.close() }
+  func expectPreview(_ document: CaptureDocument) throws {
+    let expected = try ImageRenderer.render(document, includeSelection: false)
+    let image = try #require(canvas.selectedImage.image)
+    let preview = try #require(image.cgImage(forProposedRect: nil, context: nil, hints: nil))
+    #expect(preview.width == expected.width && preview.height == expected.height)
+    #expect(preview.dataProvider?.data == expected.dataProvider?.data)
+  }
+  canvas.setSelection(CGRect(x: 50, y: 50, width: 400, height: 300))
+  let annotation = Annotation(
+    tool: .rectangle, points: [CGPoint(x: 80, y: 80), CGPoint(x: 200, y: 180)])
+  canvas.edits.groupsByEvent = false
+  canvas.edits.beginUndoGrouping()
+  canvas.add(annotation)
+  canvas.edits.endUndoGrouping()
+  try expectPreview(canvas.document)
+  canvas.setSelection(CGRect(x: 60, y: 60, width: 350, height: 250))
+  canvas.setTool(.pencil)
+  try expectPreview(canvas.document)
+  canvas.selectedID = annotation.id
+  canvas.edits.beginUndoGrouping()
+  canvas.updateSelected { $0.width = 12 }
+  canvas.edits.endUndoGrouping()
+  try expectPreview(canvas.document)
+  canvas.edits.undo()
+  try expectPreview(canvas.document)
+  canvas.edits.redo()
+  try expectPreview(canvas.document)
+  var text = Annotation(tool: .text, points: [CGPoint(x: 90, y: 90)], color: .red)
+  text.text = "old text"
+  canvas.edits.beginUndoGrouping()
+  canvas.add(text)
+  canvas.edits.endUndoGrouping()
+  canvas.beginText(at: text.points[0], editing: text)
+  var whileEditing = canvas.document
+  whileEditing.replaceAnnotations(whileEditing.annotations.filter { $0.id != text.id })
+  try expectPreview(whileEditing)
+  canvas.textEditor?.string = "中文"
+  canvas.edits.beginUndoGrouping()
+  canvas.commitText()
+  canvas.edits.endUndoGrouping()
+  try expectPreview(canvas.document)
+  func event(_ type: NSEvent.EventType, at point: CGPoint) -> NSEvent {
+    NSEvent.mouseEvent(
+      with: type, location: canvas.convert(point, to: nil), modifierFlags: [], timestamp: 0,
+      windowNumber: window.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: 1)!
+  }
+  for tool in [Tool.rectangle, .pixelate, .invert] {
+    canvas.setTool(tool)
+    canvas.edits.beginUndoGrouping()
+    canvas.mouseDown(with: event(.leftMouseDown, at: CGPoint(x: 110, y: 110)))
+    for point in [CGPoint(x: 160, y: 145), CGPoint(x: 180, y: 170)] {
+      canvas.mouseDragged(with: event(.leftMouseDragged, at: point))
+      let preview = try #require(canvas.preview)
+      var duringDrag = canvas.document
+      duringDrag.replaceAnnotations(duringDrag.annotations + [preview], recordingUndo: false)
+      try expectPreview(duringDrag)
+    }
+    canvas.mouseUp(with: event(.leftMouseUp, at: CGPoint(x: 180, y: 170)))
+    canvas.edits.endUndoGrouping()
+    try expectPreview(canvas.document)
+  }
+}
 @Test func nativeCLIRegionParsing() throws {
   let command = try NativeCommand.parse([
     "gui", "--region", "200x100+20+30", "-c", "--delay", "2000",
@@ -287,7 +357,7 @@ import Testing
   for button in controls {
     let rect = button.convert(button.bounds, to: canvas)
     #expect(rect.width >= 16 && rect.height >= 16)
-    #expect(canvas.bounds.contains(rect))
+    #expect(canvas.bounds.contains(CGPoint(x: rect.midX, y: rect.midY)))
     let point = canvas.superview!.convert(CGPoint(x: rect.midX, y: rect.midY), from: canvas)
     let hit = canvas.hitTest(point)
     #expect(hit === button)
@@ -309,6 +379,96 @@ import Testing
   #expect(outputLabels.contains(toolTitle(.accept)))
   #expect(!outputLabels.contains(toolTitle(.save)))
   #expect(!outputLabels.contains(toolTitle(.pin)))
+}
+
+@Test @MainActor func captureToolbarEdgesActivateButtonsWithoutReplacingTheSelection() throws {
+  let settings = Environment.shared.settings
+  let previous = settings.preferences
+  defer { settings.update { $0 = previous } }
+  settings.update {
+    $0.tools = [.pencil, .line, .undo]
+    $0.values["showSidePanelButton"] = "true"
+  }
+  let canvas = CanvasView(frame: nativeFrame())
+  let window = CaptureWindow(
+    contentRect: canvas.bounds, styleMask: .borderless, backing: .buffered, defer: false)
+  window.isReleasedWhenClosed = false
+  window.contentView = canvas
+  defer { window.close() }
+  let selection = CGRect(x: 160, y: 130, width: 320, height: 220)
+  canvas.setSelection(selection)
+  let toolbar = CaptureToolbar(canvas: canvas)
+  defer { toolbar.close() }
+  let button = try #require(toolbar.button(for: .pencil))
+  var ancestor: NSView? = button
+  while let view = ancestor, !(view is NSGlassEffectView) { ancestor = view.superview }
+  let glass = try #require(ancestor as? NSGlassEffectView)
+  let frame = glass.convert(glass.bounds, to: canvas)
+  let points = [
+    CGPoint(x: frame.minX + 1, y: frame.midY),
+    CGPoint(x: frame.maxX - 1, y: frame.midY),
+    CGPoint(x: frame.midX, y: frame.minY + 1),
+    CGPoint(x: frame.midX, y: frame.maxY - 1),
+    CGPoint(x: frame.minX - 3, y: frame.midY),
+    CGPoint(x: frame.maxX + 3, y: frame.midY),
+    CGPoint(x: frame.midX, y: frame.minY - 3),
+    CGPoint(x: frame.midX, y: frame.maxY + 3),
+    CGPoint(x: frame.minX + 1, y: frame.minY + 1),
+    CGPoint(x: frame.maxX - 1, y: frame.maxY - 1),
+  ]
+  for point in points {
+    #expect(canvas.bounds.contains(point))
+    let hit = canvas.hitTest(canvas.superview!.convert(point, from: canvas))
+    try #require(hit === button)
+    canvas.setTool(nil)
+    button.performClick(nil)
+    #expect(canvas.tool == .pencil)
+    #expect(canvas.document.selection == selection)
+  }
+  let line = try #require(toolbar.button(for: .line))
+  var lineAncestor: NSView? = line
+  while let view = lineAncestor, !(view is NSGlassEffectView) { lineAncestor = view.superview }
+  let lineGlass = try #require(lineAncestor as? NSGlassEffectView)
+  let lineFrame = lineGlass.convert(lineGlass.bounds, to: canvas)
+  #expect(abs(frame.midY - lineFrame.midY) < 1)
+  let middle = (frame.maxX + lineFrame.minX) / 2
+  let nearPencil = CGPoint(x: middle - 0.5, y: frame.midY)
+  let nearLine = CGPoint(x: middle + 0.5, y: frame.midY)
+  #expect(canvas.hitTest(canvas.superview!.convert(nearPencil, from: canvas)) === button)
+  #expect(canvas.hitTest(canvas.superview!.convert(nearLine, from: canvas)) === line)
+  let inspector = try #require(
+    toolbar.root.controls.first {
+      $0.accessibilityLabel() == localized("Tool settings", "工具设置")
+    })
+  var inspectorAncestor: NSView? = inspector
+  while let view = inspectorAncestor, !(view is NSGlassEffectView) {
+    inspectorAncestor = view.superview
+  }
+  let inspectorGlass = try #require(inspectorAncestor as? NSGlassEffectView)
+  let inspectorFrame = inspectorGlass.convert(inspectorGlass.bounds, to: canvas)
+  let inspectorEdge = CGPoint(x: inspectorFrame.maxX + 3, y: inspectorFrame.midY)
+  #expect(canvas.hitTest(canvas.superview!.convert(inspectorEdge, from: canvas)) === inspector)
+  let outside = CGPoint(x: 80, y: 80)
+  #expect(canvas.hitTest(canvas.superview!.convert(outside, from: canvas)) === canvas)
+  let undo = try #require(toolbar.button(for: .undo))
+  #expect(!undo.isEnabled)
+  let undoPoint = undo.convert(CGPoint(x: undo.bounds.midX, y: undo.bounds.midY), to: canvas)
+  #expect(canvas.hitTest(canvas.superview!.convert(undoPoint, from: canvas)) === toolbar.root)
+  let disabledDown = try #require(
+    NSEvent.mouseEvent(
+      with: .leftMouseDown, location: canvas.convert(undoPoint, to: nil), modifierFlags: [],
+      timestamp: 0, windowNumber: window.windowNumber, context: nil, eventNumber: 1,
+      clickCount: 1, pressure: 1))
+  toolbar.root.mouseDown(with: disabledDown)
+  toolbar.root.mouseUp(with: disabledDown)
+  #expect(canvas.document.selection == selection)
+  let down = try #require(
+    NSEvent.mouseEvent(
+      with: .leftMouseDown, location: canvas.convert(outside, to: nil), modifierFlags: [],
+      timestamp: 0, windowNumber: window.windowNumber, context: nil, eventNumber: 1,
+      clickCount: 1, pressure: 1))
+  canvas.mouseDown(with: down)
+  #expect(canvas.document.selection?.size == CGSize(width: 1, height: 1))
 }
 
 @Test @MainActor func settingsFitMinimumWindowAndUseCompactToolColumns() throws {

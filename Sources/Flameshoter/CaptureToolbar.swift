@@ -2,13 +2,43 @@
 import AppKit
 import FlameshoterCore
 
-// Empty space between the native glass buttons must still reach the capture canvas.
+// Only the buttons and their small hit margins intercept the capture canvas.
 @MainActor final class ToolbarGlassContainer: NSGlassEffectContainerView {
+  static let hitPadding: CGFloat = 6
+  var controls: [ActionButton] = []
+  private var regions: [(button: ActionButton, frame: CGRect)] = []
   override var isFlipped: Bool { true }
-  override func hitTest(_ point: NSPoint) -> NSView? {
-    let hit = super.hitTest(point)
-    return hit is NSControl ? hit : nil
+  func updateHitRegions() {
+    regions = controls.map { ($0, $0.convert($0.bounds, to: self)) }
   }
+  override func hitTest(_ point: NSPoint) -> NSView? {
+    guard !isHidden, let superview else { return nil }
+    if let control = super.hitTest(point) as? NSControl,
+      !controls.contains(where: { $0 === control })
+    {
+      return control
+    }
+    let local = convert(point, from: superview)
+    guard bounds.contains(local) else { return nil }
+    var nearest: ActionButton?
+    var nearestDistance = CGFloat.infinity
+    for region in regions where !region.button.isHidden && region.frame.contains(local) {
+      let dx = region.frame.midX - local.x
+      let dy = region.frame.midY - local.y
+      let distance = dx * dx + dy * dy
+      if distance < nearestDistance {
+        nearest = region.button
+        nearestDistance = distance
+      }
+    }
+    guard let nearest else { return nil }
+    return nearest.isEnabled ? nearest : self
+  }
+  // Disabled controls do not track mouse events, so consume their hit area here.
+  override func mouseDown(with event: NSEvent) {}
+  override func mouseDragged(with event: NSEvent) {}
+  override func mouseUp(with event: NSEvent) {}
+  override func rightMouseDown(with event: NSEvent) {}
 }
 
 @MainActor final class CaptureToolbar: NSObject {
@@ -41,11 +71,14 @@ import FlameshoterCore
     let outputRequested = command.copy || command.raw || command.path != nil || command.pin
     let excluded: [Tool] = outputRequested ? [.copy, .save, .share, .openWith, .pin] : [.accept]
     for tool in Tool.toolbarOrder where prefs.tools.contains(tool) && !excluded.contains(tool) {
-      items.append(glass(makeButton(tool), radius: CGFloat(buttonSize) / 2))
+      let button = makeButton(tool)
+      root.controls.append(button)
+      items.append(toolbarGlass(button))
     }
     if prefs.bool("showSidePanelButton") {
       configure(inspectorButton)
-      let effect = glass(inspectorButton, radius: CGFloat(buttonSize) / 2)
+      root.controls.append(inspectorButton)
+      let effect = toolbarGlass(inspectorButton)
       effect.translatesAutoresizingMaskIntoConstraints = true
       inspectorGlass = effect
       content.addSubview(effect)
@@ -60,8 +93,14 @@ import FlameshoterCore
   private func configure(_ button: ActionButton) {
     button.bezelStyle = .accessoryBarAction
     button.isBordered = false
-    button.widthAnchor.constraint(equalToConstant: CGFloat(buttonSize - 16)).isActive = true
-    button.heightAnchor.constraint(equalToConstant: CGFloat(buttonSize - 16)).isActive = true
+    let size = CGFloat(buttonSize) + 2 * ToolbarGlassContainer.hitPadding
+    button.widthAnchor.constraint(equalToConstant: size).isActive = true
+    button.heightAnchor.constraint(equalToConstant: size).isActive = true
+  }
+  private func toolbarGlass(_ button: ActionButton) -> NSGlassEffectView {
+    // Keep the glass size while letting the native button extend into its hit margin.
+    glass(
+      button, radius: CGFloat(buttonSize) / 2, inset: -ToolbarGlassContainer.hitPadding)
   }
   private func makeButton(_ tool: Tool) -> ActionButton {
     let button = ActionButton("", symbol: tool.symbol) { [weak self] in self?.invoke(tool) }
@@ -117,6 +156,8 @@ import FlameshoterCore
       root.isHidden = true
       return
     }
+    frame = frame.insetBy(
+      dx: -ToolbarGlassContainer.hitPadding, dy: -ToolbarGlassContainer.hitPadding)
     root.frame = frame
     content.frame = CGRect(origin: .zero, size: frame.size)
     for (item, rect) in zip(items, frames) {
@@ -124,6 +165,7 @@ import FlameshoterCore
     }
     inspectorGlass?.frame = inspectorFrame.offsetBy(dx: -frame.minX, dy: -frame.minY)
     root.layoutSubtreeIfNeeded()
+    root.updateHitRegions()
     root.isHidden = false
   }
   func toggleInspector() {
