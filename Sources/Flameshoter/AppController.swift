@@ -9,13 +9,24 @@ import UserNotifications
   private var preferences: PreferencesController?
   private var sessions: [CaptureSession] = []
   private var pins: [PinWindowController] = []
+  private var contentPins: [ContentPinController] = []
+  private enum ClosedPin {
+    case image(PinWindowController), content(ContentPinController)
+  }
+  private var closedPins: [ClosedPin] = []
   private var recognitionWindows: [RecognitionWindowController] = []
   private var observers: [NSObjectProtocol] = []
   private var commandObserver: NSObjectProtocol?
   private let hotkey = GlobalHotkey()
+  private let pinClipboardHotkey = GlobalHotkey(identifier: 2)
+  private let restorePinHotkey = GlobalHotkey(identifier: 3)
   private var capturePending = false
   private var preparingRestart = false
   private var standaloneCapture: Bool
+  private var canUseGlobalHotkeys: Bool {
+    let env = ProcessInfo.processInfo.environment
+    return env["FLAMESHOTER_TEST_CONFIG"] == nil || env["FLAMESHOTER_TEST_GLOBAL_HOTKEYS"] == "1"
+  }
   init(command: NativeCommand?) {
     initialCommand = command
     standaloneCapture =
@@ -54,6 +65,7 @@ import UserNotifications
       self?.configureStatusItem()
       self?.configureHotkey()
       self?.installMenus()
+      self?.trimPinHistory()
       for session in self?.sessions ?? [] {
         for surface in session.surfaces { surface.canvas.refresh() }
       }
@@ -121,11 +133,12 @@ import UserNotifications
     for session in Array(sessions) { session.close(cancelled: true) }
     return true
   }
-  func assignGlobalShortcut(_ shortcut: Shortcut?) -> Bool {
-    guard ProcessInfo.processInfo.environment["FLAMESHOTER_TEST_CONFIG"] == nil else { return true }
-    let old = Environment.shared.preferences.shortcut("TAKE_SCREENSHOT")
-    if hotkey.register(shortcut) == noErr { return true }
-    _ = hotkey.register(old)
+  func assignGlobalShortcut(_ shortcut: Shortcut?, for name: String = "TAKE_SCREENSHOT") -> Bool {
+    guard canUseGlobalHotkeys else { return true }
+    let handler = name == "PIN_CLIPBOARD" ? pinClipboardHotkey : name == "RESTORE_PIN" ? restorePinHotkey : hotkey
+    let old = Environment.shared.preferences.shortcut(name)
+    if handler.register(shortcut) == noErr { return true }
+    _ = handler.register(old)
     warning(
       localized("Global shortcut unavailable", "全局快捷键不可用"),
       localized(
@@ -134,15 +147,19 @@ import UserNotifications
     return false
   }
   private func configureHotkey() {
-    guard ProcessInfo.processInfo.environment["FLAMESHOTER_TEST_CONFIG"] == nil else { return }
+    guard canUseGlobalHotkeys else { return }
     hotkey.invoke = { [weak self] in self?.capture(nil) }
-    let status = hotkey.register(Environment.shared.preferences.shortcut("TAKE_SCREENSHOT"))
-    if status != noErr {
-      warning(
-        localized("Global shortcut unavailable", "全局快捷键不可用"),
-        localized(
-          "Another application may be using this combination. Choose a different shortcut in Settings.",
-          "此组合键可能已被其他应用占用，请在设置中选择其他快捷键。"))
+    pinClipboardHotkey.invoke = { [weak self] in self?.pinClipboard(nil) }
+    restorePinHotkey.invoke = { [weak self] in self?.restoreClosedPin(nil) }
+    for (name, handler) in [("TAKE_SCREENSHOT", hotkey), ("PIN_CLIPBOARD", pinClipboardHotkey),
+                            ("RESTORE_PIN", restorePinHotkey)] {
+      if handler.register(Environment.shared.preferences.shortcut(name)) != noErr {
+        warning(
+          localized("Global shortcut unavailable", "全局快捷键不可用"),
+          localized(
+            "Another application may be using this combination. Choose a different shortcut in Settings.",
+            "此组合键可能已被其他应用占用，请在设置中选择其他快捷键。"))
+      }
     }
   }
   private func configureStatusItem() {
@@ -174,6 +191,9 @@ import UserNotifications
     displayItem.submenu = displays
     menu.addItem(displayItem)
     menu.addItem(.separator())
+    add(menu, localized("Pin clipboard", "置顶剪贴板"), #selector(pinClipboard(_:)), symbol: "pin", shortcut: "PIN_CLIPBOARD")
+    add(menu, localized("Restore last closed pin", "恢复上次关闭的贴图"), #selector(restoreClosedPin(_:)), shortcut: "RESTORE_PIN")
+    menu.addItem(.separator())
     add(menu, localized("Settings…", "设置…"), #selector(showPreferences(_:)), symbol: "gearshape")
     add(menu, localized("About Flameshoter", "关于 Flameshoter"), #selector(showAbout(_:)))
     menu.addItem(.separator())
@@ -181,10 +201,18 @@ import UserNotifications
     item?.menu = menu
   }
   private func add(
-    _ menu: NSMenu, _ title: String, _ action: Selector, key: String = "", symbol: String? = nil
+    _ menu: NSMenu, _ title: String, _ action: Selector, key: String = "", symbol: String? = nil,
+    shortcut: String? = nil
   ) {
     let entry = NSMenuItem(title: title, action: action, keyEquivalent: key)
     entry.target = self
+    if let shortcut, let binding = Environment.shared.preferences.shortcut(shortcut),
+      let character = Shortcut.names[binding.keyCode], character.count == 1,
+      character.first?.isASCII == true
+    {
+      entry.keyEquivalent = character.lowercased()
+      entry.keyEquivalentModifierMask = binding.modifiers.intersection(Shortcut.relevant)
+    }
     if let symbol { entry.image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil) }
     menu.addItem(entry)
   }
@@ -219,6 +247,8 @@ import UserNotifications
     fileItem.submenu = file
     root.addItem(fileItem)
     add(file, localized("Capture region", "截取区域"), #selector(capture(_:)), key: "n")
+    add(file, localized("Pin clipboard", "置顶剪贴板"), #selector(pinClipboard(_:)), shortcut: "PIN_CLIPBOARD")
+    add(file, localized("Restore last closed pin", "恢复上次关闭的贴图"), #selector(restoreClosedPin(_:)), shortcut: "RESTORE_PIN")
     add(file, localized("Demo canvas", "试用标注工具"), #selector(demo(_:)))
     file.addItem(.separator())
     file.addItem(
@@ -266,6 +296,7 @@ import UserNotifications
     for session in sessions { session.active.canvas.refresh() }
   }
   func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
+    if menuItem.action == #selector(restoreClosedPin(_:)) { return !closedPins.isEmpty }
     if menuItem.action == #selector(undo(_:)) {
       return NSApp.keyWindow?.firstResponder?.undoManager?.canUndo ?? false
     }
@@ -377,17 +408,70 @@ import UserNotifications
     !preparingRestart && !capturePending
       && Environment.shared.preferences.bool("disabledTrayIcon")
       && Environment.shared.preferences.bool("autoCloseIdleDaemon")
-      && sessions.isEmpty && pins.isEmpty
+      && sessions.isEmpty && pins.isEmpty && contentPins.isEmpty
       && !NSApp.windows.contains(where: {
         $0.styleMask.contains(.titled) && ($0.isVisible || $0.isMiniaturized)
       })
   }
   func pin(_ image: CGImage, screen: NSScreen? = NSScreen.main) {
     let controller = PinWindowController(image: image, screen: screen)
-    controller.onClose = { [weak self] closed in self?.pins.removeAll { $0 === closed } }
+    controller.onClose = { [weak self] closed in
+      guard let self else { return }
+      self.pins.removeAll { $0 === closed }
+      self.closedPins.append(.image(closed))
+      self.trimPinHistory()
+    }
     controller.onRecognize = { [weak self] image, kind in self?.recognize(image, kind: kind) }
     pins.append(controller)
     controller.show()
+  }
+  private func pin(_ content: ContentPin) {
+    let controller = ContentPinController(content: content)
+    controller.onClose = { [weak self] closed in
+      guard let self else { return }
+      self.contentPins.removeAll { $0 === closed }
+      self.closedPins.append(.content(closed))
+      self.trimPinHistory()
+    }
+    contentPins.append(controller)
+    controller.show()
+  }
+  @objc func pinClipboard(_ sender: Any?) {
+    let env = ProcessInfo.processInfo.environment
+    let board: NSPasteboard
+    if env["FLAMESHOTER_TEST_CONFIG"] != nil, let name = env["FLAMESHOTER_TEST_PASTEBOARD"] {
+      board = NSPasteboard(name: NSPasteboard.Name(name))
+    } else { board = .general }
+    guard pinClipboardContents(of: board) else {
+      warning(localized("Nothing to pin", "没有可置顶的内容"),
+              localized("Copy an image, text, color or file first.", "请先复制图片、文字、颜色或文件。"))
+      return
+    }
+  }
+  @discardableResult func pinClipboardContents(of board: NSPasteboard) -> Bool {
+    let contents = ClipboardPin.contents(of: board)
+    guard !contents.isEmpty else { return false }
+    for content in contents {
+      switch content {
+      case .image(let image): pin(image)
+      case .animated(let data): pin(.animated(data))
+      case .text(let text): pin(.text(text))
+      case .color(let color, let original): pin(.color(color, original))
+      case .file(let url): pin(.file(url))
+      }
+    }
+    return true
+  }
+  @objc func restoreClosedPin(_ sender: Any?) {
+    guard let last = closedPins.popLast() else { return }
+    switch last {
+    case .image(let controller): pins.append(controller); controller.show()
+    case .content(let controller): contentPins.append(controller); controller.show()
+    }
+  }
+  private func trimPinHistory() {
+    let limit = Environment.shared.preferences.integer("pinHistoryLimit")
+    if closedPins.count > limit { closedPins.removeFirst(closedPins.count - limit) }
   }
   func recognize(_ image: CGImage, kind: RecognitionKind) {
     // An interactive CLI capture must stay alive while its result window is open.

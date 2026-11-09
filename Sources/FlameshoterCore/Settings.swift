@@ -2,7 +2,7 @@
 import AppKit
 
 public struct Preferences: Codable, Equatable, Sendable {
-  public var schemaVersion = 5
+  public var schemaVersion = 6
   public var values: [String: String] = [:]
   public var shortcuts = Shortcut.defaults
   public var unassignedShortcuts: Set<String> = []
@@ -18,7 +18,7 @@ public struct Preferences: Codable, Equatable, Sendable {
     "autoSelectionMode": "2", "screenColorFormat": "0", "longCaptureAutoTrim": "false",
     "squareMagnifier": "false", "showSidePanelButton": "true", "useNativeFullscreen": "false",
     "showSelectionGeometry": "4", "showSelectionGeometryHideTime": "3000", "undoLimit": "100",
-    "antialiasingPinZoom": "true", "useSystemAccentColor": "true", "uiColor": "#007aff",
+    "antialiasingPinZoom": "true", "pinHistoryLimit": "20", "useSystemAccentColor": "true", "uiColor": "#007aff",
     "contrastUiColor": "#194678", "drawColor": "#ff3b30", "contrastOpacity": "190",
     "predefinedColorPaletteLarge": "false", "savePath": "", "savePathFixed": "false",
     "filenamePattern": "%F_%H-%M-%S", "saveAsFileExtension": "png", "jpegQuality": "75",
@@ -239,6 +239,16 @@ public final class SettingsStore {
       }
       preferences.schemaVersion = 5
     }
+    if preferences.schemaVersion < 6 {
+      for name in ["PIN_CLIPBOARD", "RESTORE_PIN"] {
+        if let shortcut = Shortcut.defaults[name], preferences.shortcuts.contains(where: {
+          $0.key != name && !preferences.unassignedShortcuts.contains($0.key) && $0.value == shortcut
+        }) {
+          preferences.unassignedShortcuts.insert(name)
+        }
+      }
+      preferences.schemaVersion = 6
+    }
     return preferences.schemaVersion != previousVersion
   }
   public static func validate(_ p: Preferences) throws {
@@ -248,7 +258,7 @@ public final class SettingsStore {
       "drawThickness": 1...500, "drawRectangleSize": 1...500, "drawMarkerSize": 1...500,
       "drawFontSize": 1...500, "drawCircleCounterSize": 1...500, "drawPixelateSize": 1...500,
       "arrowStyle": 0...1, "textAlignment": 0...2,
-      "autoSelectionMode": 0...2, "screenColorFormat": 0...5,
+      "autoSelectionMode": 0...2, "screenColorFormat": 0...5, "pinHistoryLimit": 0...200,
     ]
     for (key, range) in ranges {
       guard let n = Int(p.string(key)), range.contains(n) else { throw SettingsError.invalid(key) }

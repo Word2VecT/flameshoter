@@ -155,7 +155,7 @@ private func pixels(_ image: CGImage) -> [UInt8] {
   try JSONEncoder().encode(old).write(to: url)
   let upgraded = SettingsStore(url: url)
   #expect(upgraded.loadError == nil)
-  #expect(upgraded.preferences.schemaVersion == 5)
+  #expect(upgraded.preferences.schemaVersion == 6)
   #expect(upgraded.preferences.tools == [.pencil, .copy, .share, .recognizeText, .recognizeQRCode, .longCapture])
   #expect(upgraded.preferences.values == old.values)
   #expect(upgraded.preferences.shortcuts == old.shortcuts)

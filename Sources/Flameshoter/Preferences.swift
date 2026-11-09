@@ -313,6 +313,7 @@ import UserNotifications
         integer("undoLimit", "Undo history limit (0 = unlimited)", "撤销历史上限（0 为不限）", 0...999),
         heading("Pinned captures", "置顶截图"),
         boolean("antialiasingPinZoom", "Smooth pinned image zoom", "平滑缩放置顶截图"),
+        integer("pinHistoryLimit", "Closed pins kept during this session", "本次运行保留的已关闭贴图", 0...200),
         ActionButton(localized("Screen Recording permissions…", "屏幕录制权限…")) {
           Permissions.openSettings()
         },
@@ -468,8 +469,9 @@ import UserNotifications
             localized("Another action uses this combination.", "其他操作已使用此组合键。"), window: self.window)
           return false
         }
-        if key == "TAKE_SCREENSHOT", let app = NSApp.delegate as? AppController,
-          !app.assignGlobalShortcut(proposed)
+        if ["TAKE_SCREENSHOT", "PIN_CLIPBOARD", "RESTORE_PIN"].contains(key),
+          let app = NSApp.delegate as? AppController,
+          !app.assignGlobalShortcut(proposed, for: key)
         {
           return false
         }
@@ -498,6 +500,8 @@ import UserNotifications
     if let tool = Tool.allCases.first(where: { $0.legacyName == key }) { return toolTitle(tool) }
     let names = [
       "TAKE_SCREENSHOT": ("Global capture", "全局截图"), "TYPE_TOGGLE_PANEL": ("Tool settings", "工具设置"),
+      "PIN_CLIPBOARD": ("Pin clipboard", "置顶剪贴板"),
+      "RESTORE_PIN": ("Restore last closed pin", "恢复上次关闭的贴图"),
       "TYPE_SELECT_ALL": ("Select entire screen", "选择整个屏幕"),
       "TYPE_DELETE_CURRENT_TOOL": ("Delete annotation", "删除标注"),
       "TYPE_COMMIT_CURRENT_TOOL": ("Commit text", "完成文字编辑"),

@@ -88,6 +88,7 @@ import VisionKit
   var onRecognize: ((CGImage, RecognitionKind) -> Void)?
   private let textOverlay = ImageAnalysisOverlayView()
   private var analysisStarted = false
+  private var analysisTask: Task<Void, Never>?
   private let naturalSize: CGSize
   init(image: CGImage, screen: NSScreen? = NSScreen.main) {
     self.image = image
@@ -137,9 +138,10 @@ import VisionKit
     NSApp.activate()
     if !analysisStarted {
       analysisStarted = true
-      Task { [weak self] in
+      analysisTask = Task { [weak self] in
         guard let self else { return }
-        self.textOverlay.analysis = try? await ImageRecognition.text(self.image)
+        let analysis = try? await ImageRecognition.text(self.image)
+        if !Task.isCancelled { self.textOverlay.analysis = analysis }
       }
     }
   }
@@ -201,5 +203,11 @@ import VisionKit
     imageView.appendActions(to: menu)
     return menu
   }
-  func windowWillClose(_ notification: Notification) { onClose?(self) }
+  func windowWillClose(_ notification: Notification) {
+    analysisTask?.cancel()
+    analysisTask = nil
+    textOverlay.analysis = nil
+    analysisStarted = false
+    onClose?(self)
+  }
 }

@@ -6,6 +6,31 @@ struct ScreenColor: Equatable {
   let green: Int
   let blue: Int
 
+  static func parse(_ value: String) -> ScreenColor? {
+    let text = value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    let hex = text.hasPrefix("#") ? String(text.dropFirst()) : text
+    if (hex.count == 3 && text.hasPrefix("#")) || hex.count == 6,
+      hex.allSatisfy({ $0.isHexDigit })
+    {
+      let digits = hex.count == 3 ? hex.map { "\($0)\($0)" }.joined() : hex
+      guard let number = Int(digits, radix: 16) else { return nil }
+      return ScreenColor(red: (number >> 16) & 255, green: (number >> 8) & 255, blue: number & 255)
+    }
+    guard text.hasPrefix("rgb("), text.hasSuffix(")") else { return nil }
+    let parts = text.dropFirst(4).dropLast().split(separator: ",", omittingEmptySubsequences: false)
+    guard parts.count == 3 else { return nil }
+    let values = parts.compactMap {
+      Int($0.trimmingCharacters(in: .whitespaces))
+    }
+    guard values.count == 3, values.allSatisfy({ (0...255).contains($0) }) else { return nil }
+    return ScreenColor(red: values[0], green: values[1], blue: values[2])
+  }
+
+  var color: NSColor {
+    NSColor(srgbRed: CGFloat(red) / 255, green: CGFloat(green) / 255,
+            blue: CGFloat(blue) / 255, alpha: 1)
+  }
+
   enum Format: Int, CaseIterable {
     case hashHex, rgb, bgr, hex, hsv, hsl
     var title: String {

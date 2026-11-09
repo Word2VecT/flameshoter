@@ -26,6 +26,7 @@
 - Vertical and horizontal scrolling captures with preview, cropping, copying, saving and pinning.
 - In-app annotation: pencil, lines, arrows, shapes, text, numbers and redaction.
 - Copy, save, pin and share through the macOS share sheet.
+- Pin clipboard images, GIFs, text, colors and files; restore pins closed during the current session.
 - Recognize text and QR codes offline in captures and pinned images; select text directly in images.
 - Pick and copy colors in HEX, RGB, HSV and other formats; save as PNG, lossless WebP, PDF, AVIF and more. PNG optimization is optional.
 - English, Simplified Chinese and customizable shortcuts.
@@ -59,6 +60,7 @@ These are the defaults. Shortcuts can be changed in Settings.
 | ⌘C / ⌘S / ⌘⇧S | Copy / save / share |
 | ⌘Z / ⌘⇧Z | Undo / redo |
 | ⌘P | Pin capture |
+| ⌃⇧2 / ⌃⇧3 | Pin clipboard / restore the last closed pin |
 | ⇧C / Q | Recognize text / QR code |
 | L | Scrolling capture |
 | ⌥C | Copy the color under the pointer; hold ⌥ and press ⇧ to change formats |

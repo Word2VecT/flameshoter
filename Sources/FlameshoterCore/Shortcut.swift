@@ -83,7 +83,8 @@ public struct Shortcut: Codable, Equatable, Sendable {
   public static var defaults: [String: Shortcut] {
     var d: [String: Shortcut] = [:]
     let definitions = [
-      "TAKE_SCREENSHOT": "Ctrl+Shift+X", "TYPE_PENCIL": "P", "TYPE_DRAWER": "D", "TYPE_ARROW": "A",
+      "TAKE_SCREENSHOT": "Ctrl+Shift+X", "PIN_CLIPBOARD": "Meta+Shift+2",
+      "RESTORE_PIN": "Meta+Shift+3", "TYPE_PENCIL": "P", "TYPE_DRAWER": "D", "TYPE_ARROW": "A",
       "TYPE_SELECTION": "S", "TYPE_RECTANGLE": "R", "TYPE_CIRCLE": "C", "TYPE_MARKER": "M",
       "TYPE_MOVESELECTION": "H", "TYPE_PIXELATE": "B", "TYPE_TEXT": "T", "TYPE_CIRCLECOUNT": "N",
       "TYPE_INVERT": "I", "TYPE_UNDO": "Ctrl+Z", "TYPE_REDO": "Ctrl+Shift+Z", "TYPE_COPY": "Ctrl+C",
