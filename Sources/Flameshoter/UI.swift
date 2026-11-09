@@ -5,6 +5,8 @@ import FlameshoterCore
 @MainActor final class Environment {
   static let shared = Environment()
   let settings: SettingsStore
+  lazy var regionHistory = RegionHistory(url: settings.url.deletingLastPathComponent()
+    .appendingPathComponent("CaptureHistory", isDirectory: true).appendingPathComponent("regions.json"))
   var preferences: Preferences { settings.preferences }
   init() {
     let variables = ProcessInfo.processInfo.environment

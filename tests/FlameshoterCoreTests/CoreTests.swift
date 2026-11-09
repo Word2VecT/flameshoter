@@ -155,7 +155,7 @@ private func pixels(_ image: CGImage) -> [UInt8] {
   try JSONEncoder().encode(old).write(to: url)
   let upgraded = SettingsStore(url: url)
   #expect(upgraded.loadError == nil)
-  #expect(upgraded.preferences.schemaVersion == 7)
+  #expect(upgraded.preferences.schemaVersion == 8)
   #expect(upgraded.preferences.tools == [.pencil, .copy, .share, .recognizeText, .recognizeQRCode, .longCapture, .screenRecording])
   #expect(upgraded.preferences.values == old.values)
   #expect(upgraded.preferences.shortcuts == old.shortcuts)
@@ -230,6 +230,23 @@ private func pixels(_ image: CGImage) -> [UInt8] {
   #expect(upgraded.preferences.shortcut(Tool.screenRecording.legacyName) == nil)
   upgraded.update { $0.tools.removeAll { $0 == .screenRecording } }
   #expect(!SettingsStore(url: url).preferences.tools.contains(.screenRecording))
+}
+
+@Test func regionHistoryUpgradeDoesNotReplaceExistingShortcuts() throws {
+  let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+  try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+  defer { try? FileManager.default.removeItem(at: root) }
+  let url = root.appendingPathComponent("settings.json")
+  var old = Preferences()
+  old.schemaVersion = 7
+  old.shortcuts.removeValue(forKey: "TYPE_PREVIOUS_REGION")
+  old.shortcuts.removeValue(forKey: "TYPE_NEXT_REGION")
+  old.shortcuts["TYPE_PENCIL"] = Shortcut(33)
+  try JSONEncoder().encode(old).write(to: url)
+  let upgraded = SettingsStore(url: url).preferences
+  #expect(upgraded.shortcut("TYPE_PENCIL") == Shortcut(33))
+  #expect(upgraded.shortcut("TYPE_PREVIOUS_REGION") == nil)
+  #expect(upgraded.shortcut("TYPE_NEXT_REGION") == Shortcut(30))
 }
 
 @Test func existingSettingsGainTheShareShortcutWithoutReplacingOverrides() {

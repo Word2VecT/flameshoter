@@ -1,4 +1,6 @@
-# Flameshoter 0.3.4
+# Flameshoter 0.3.5
+
+Recall prior capture regions for each display and choose how many regions to keep.
 
 Record a selected region with configurable frame rate, delay, system audio and microphone. Pause and resume, preview and trim using native macOS controls, and export to MP4, GIF or lossless animated WebP. GIF and WebP do not include audio.
 

@@ -42,6 +42,7 @@ import FlameshoterCore
   private var sharing: CaptureSharing?
   private var longCapture: LongCaptureSession?
   private var recording: ScreenRecordingSession?
+  private var regionHistoryIndices: [Int: Int] = [:]
   var hasUnsavedRecording: Bool { recording?.hasUnsavedRecording ?? false }
   private var exporting = false
   init(frames: [CapturedScreen], command: NativeCommand, app: AppController) {
@@ -97,9 +98,11 @@ import FlameshoterCore
       }
       canvas.onRegionSettled = { [weak self] in
         guard let self else { return }
+        self.regionHistoryIndices.removeValue(forKey: index)
         self.update(index)
         if self.command.acceptOnSelect { self.perform(.accept, on: index) }
       }
+      canvas.onRegionHistory = { [weak self] direction in self?.cycleRegion(on: index, direction: direction) }
     }
     if let screen = frames.firstIndex(where: { $0.screen.frame.contains(NSEvent.mouseLocation) }) {
       activeIndex = screen
@@ -189,6 +192,14 @@ import FlameshoterCore
     longCapture = nil
     recording?.invalidate()
     recording = nil
+    var regionError: Error?
+    if !cancelled, let rectangle = active.canvas.document.selection {
+      do {
+        try Environment.shared.regionHistory.record(
+          display: RegionHistory.displayIdentifier(active.screen), rectangle: rectangle,
+          limit: Environment.shared.preferences.integer("regionHistoryLimit"))
+      } catch { regionError = error }
+    }
     if Environment.shared.preferences.bool("saveLastRegion"),
       let r = active.canvas.document.selection
     {
@@ -207,6 +218,24 @@ import FlameshoterCore
       app?.notifyCancelled()
     }
     app?.sessionClosed(self)
+    if let regionError { app?.showRegionHistoryError(regionError) }
+  }
+  private func cycleRegion(on index: Int, direction: Int) {
+    guard surfaces.indices.contains(index), activate(index) else { return }
+    let surface = surfaces[index]
+    let history = Environment.shared.regionHistory
+    let limit = Environment.shared.preferences.integer("regionHistoryLimit")
+    guard limit > 0 else { NSSound.beep(); return }
+    if let error = history.loadError { app?.showRegionHistoryError(error); return }
+    let regions = history.regions(
+      display: RegionHistory.displayIdentifier(surface.screen), bounds: surface.canvas.bounds,
+      limit: limit)
+    guard !regions.isEmpty else { NSSound.beep(); return }
+    let current = regionHistoryIndices[index]
+    let target = current.map { ($0 + direction + regions.count) % regions.count }
+      ?? (direction < 0 ? regions.count - 1 : 0)
+    regionHistoryIndices[index] = target
+    surface.canvas.setSelection(regions[target])
   }
   private static func savedRegion() -> CGRect? {
     let string = Environment.shared.preferences.string("lastRegion")

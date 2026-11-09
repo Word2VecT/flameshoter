@@ -42,6 +42,7 @@ import FlameshoterCore
   var onChange: (() -> Void)?
   var onInteract: (() -> Bool)?
   var onRegionSettled: (() -> Void)?
+  var onRegionHistory: ((Int) -> Void)?
   var onInspector: (() -> Void)?
   var onCopyColor: ((String) -> Void)?
   let frost = PassiveFrost()
@@ -811,6 +812,11 @@ import FlameshoterCore
       if let window {
         updateAutomaticSelection(at: convert(window.mouseLocationOutsideOfEventStream, from: nil))
       }
+      return true
+    }
+    for (name, direction) in [("TYPE_PREVIOUS_REGION", -1), ("TYPE_NEXT_REGION", 1)]
+    where prefs.shortcut(name)?.matches(event) == true {
+      onRegionHistory?(direction)
       return true
     }
     for action in Tool.allCases where prefs.shortcut(action.legacyName)?.matches(event) == true {

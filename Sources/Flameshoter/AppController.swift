@@ -24,6 +24,7 @@ import UserNotifications
   private var pendingPinUpdates: [UUID: Task<Void, Never>] = [:]
   private var dirtyPinText: Set<UUID> = []
   private var pinArchiveErrorShown = false
+  private var regionHistoryErrorShown = false
   private var pinArchiveFailure: Error?
   private var terminating = false
   private lazy var pinArchive = PinArchive(
@@ -687,6 +688,13 @@ import UserNotifications
       localized("Unable to save or restore pin history", "无法保存或恢复贴图历史"),
       localized("Existing history was left in place. ", "已有历史文件已保留。") + errorMessage(error))
   }
+  func showRegionHistoryError(_ error: Error) {
+    guard !regionHistoryErrorShown else { return }
+    regionHistoryErrorShown = true
+    warning(
+      localized("Unable to read or save capture region history", "无法读取或保存截图区域历史"),
+      localized("Existing history was left in place. ", "已有历史文件已保留。") + errorMessage(error))
+  }
   func recognize(_ image: CGImage, kind: RecognitionKind) {
     // An interactive CLI capture must stay alive while its result window is open.
     standaloneCapture = false
@@ -773,7 +781,7 @@ import UserNotifications
     NSApp.orderFrontStandardAboutPanel(options: [
       .applicationName: "Flameshoter",
       .applicationVersion: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString")
-        as? String ?? "0.3.4",
+        as? String ?? "0.3.5",
       .version: localized(
         "Native Swift / AppKit · Based on Flameshot", "原生 Swift / AppKit · 基于 Flameshot"),
       .credits: NSAttributedString(

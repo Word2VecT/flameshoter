@@ -50,6 +50,28 @@ import Testing
   #expect(canvas.document.annotations == [original])
 }
 
+@Test @MainActor func captureRegionHistoryShortcutsDispatchBothDirections() throws {
+  let store = Environment.shared.settings
+  let previous = store.preferences
+  defer { store.update { $0 = previous } }
+  store.update {
+    $0.shortcuts["TYPE_PREVIOUS_REGION"] = Shortcut(33)
+    $0.shortcuts["TYPE_NEXT_REGION"] = Shortcut(30)
+    $0.unassignedShortcuts.remove("TYPE_PREVIOUS_REGION")
+    $0.unassignedShortcuts.remove("TYPE_NEXT_REGION")
+  }
+  let canvas = CanvasView(frame: nativeFrame())
+  var directions: [Int] = []
+  canvas.onRegionHistory = { directions.append($0) }
+  for (code, character) in [(UInt16(33), "["), (UInt16(30), "]")] {
+    let event = try #require(NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0,
+                                               windowNumber: 0, context: nil, characters: character,
+                                               charactersIgnoringModifiers: character, isARepeat: false, keyCode: code))
+    #expect(canvas.handleKey(event))
+  }
+  #expect(directions == [-1, 1])
+}
+
 @Test @MainActor func capturePreviewTracksAnnotationEditsAndSelectionChanges() throws {
   let canvas = CanvasView(frame: nativeFrame())
   let window = CaptureWindow(

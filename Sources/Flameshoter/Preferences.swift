@@ -294,6 +294,18 @@ import UserNotifications
           }
         },
         boolean("saveLastRegion", "Remember the last capture region", "记住上次截图区域"),
+        integer("regionHistoryLimit", "Capture regions retained (0 disables history)", "保留的截图区域数量（0 为关闭）", 0...99999),
+        ActionButton(localized("Clear capture region history…", "清除截图区域历史…")) {
+          let alert = NSAlert()
+          alert.messageText = localized("Clear capture region history?", "清除截图区域历史？")
+          alert.informativeText = localized("This cannot be undone.", "此操作无法撤销。")
+          alert.addButton(withTitle: localized("Cancel", "取消"))
+          alert.addButton(withTitle: localized("Clear", "清除"))
+          guard alert.runModal() == .alertSecondButtonReturn else { return }
+          do { try Environment.shared.regionHistory.clear() } catch {
+            warning(localized("Unable to clear region history", "无法清除截图区域历史"), errorMessage(error))
+          }
+        },
         boolean("copyOnDoubleClick", "Double-click to copy", "双击复制截图"),
         boolean("showMagnifier", "Show pixel magnifier", "显示像素放大镜"),
         boolean("squareMagnifier", "Use a square magnifier", "使用方形放大镜"),
@@ -508,6 +520,8 @@ import UserNotifications
       "TYPE_COMMIT_CURRENT_TOOL": ("Commit text", "完成文字编辑"),
       "TYPE_GRAB_COLOR": ("Pick a screen color", "拾取屏幕颜色"),
       "TYPE_COPY_PIXEL_COLOR": ("Copy pixel color", "复制像素颜色"),
+      "TYPE_PREVIOUS_REGION": ("Previous capture region", "上一个截图区域"),
+      "TYPE_NEXT_REGION": ("Next capture region", "下一个截图区域"),
       "TYPE_CLOSE_ACTIVE_PIN_WINDOW": ("Close pinned capture", "关闭置顶截图"),
       "TYPE_MOVE_LEFT": ("Move left", "向左移动选区"), "TYPE_MOVE_RIGHT": ("Move right", "向右移动选区"),
       "TYPE_MOVE_UP": ("Move up", "向上移动选区"), "TYPE_MOVE_DOWN": ("Move down", "向下移动选区"),
