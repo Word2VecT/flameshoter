@@ -8,13 +8,13 @@ import Testing
 @testable import Flameshoter
 @testable import FlameshoterCore
 
-private func encodingFixture(space: CFString = CGColorSpace.sRGB) -> CGImage {
+private func encodingFixture(space: CFString = CGColorSpace.sRGB, opaque: Bool = false) -> CGImage {
   let width = 256
   let height = 192
   var bytes = [UInt8]()
   for y in 0..<height {
     for x in 0..<width {
-      bytes += [UInt8(x), UInt8(y), UInt8((x + y) % 256), [0, 1, 99, 255][(x / 32) % 4]]
+      bytes += [UInt8(x), UInt8(y), UInt8((x + y) % 256), opaque ? 255 : [0, 1, 99, 255][(x / 32) % 4]]
     }
   }
   return CGImage(
@@ -141,6 +141,55 @@ private func rgba(_ image: CGImage) throws -> Data {
     let explicit = directory.appendingPathComponent("explicit.webp")
     #expect(try await Files.save(image, path: explicit.path) == explicit)
     #expect(try decodedImage(Data(contentsOf: explicit)).width == image.width)
+  }
+
+  @Test @MainActor func savesPDFAndAVIFWithUsableImageContent() async throws {
+    let store = Environment.shared.settings
+    let previous = store.preferences
+    defer { store.update { $0 = previous } }
+    let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let image = encodingFixture(opaque: true)
+    #expect(Files.supportedFormats.contains { $0.0 == "pdf" })
+    store.set("saveAsFileExtension", "pdf")
+    #expect(store.loadError == nil)
+    let url = try #require(await Files.save(image, path: directory.path, filename: "capture"))
+    #expect(url.pathExtension == "pdf")
+    let document = try #require(CGPDFDocument(url as CFURL))
+    let page = try #require(document.page(at: 1))
+    #expect(document.numberOfPages == 1)
+    #expect(page.getBoxRect(.mediaBox).size == CGSize(width: image.width, height: image.height))
+    let context = try #require(CGContext(
+      data: nil, width: image.width, height: image.height, bitsPerComponent: 8,
+      bytesPerRow: image.width * 4, space: CGColorSpace(name: CGColorSpace.sRGB)!,
+      bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
+    context.drawPDFPage(page)
+    let rendered = try #require(context.makeImage())
+    #expect(try rgba(rendered) == rgba(image))
+
+    let transparent = encodingFixture()
+    let transparentPDF = try ImageEncoder.data(transparent, format: "pdf")
+    let provider = try #require(CGDataProvider(data: transparentPDF as CFData))
+    let transparentPage = try #require(CGPDFDocument(provider)?.page(at: 1))
+    func bitmap() throws -> CGContext {
+      try #require(CGContext(
+        data: nil, width: image.width, height: image.height, bitsPerComponent: 8,
+        bytesPerRow: image.width * 4, space: CGColorSpace(name: CGColorSpace.sRGB)!,
+        bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
+    }
+    let expected = try bitmap()
+    expected.draw(transparent, in: CGRect(x: 0, y: 0, width: image.width, height: image.height))
+    let actual = try bitmap()
+    actual.drawPDFPage(transparentPage)
+    #expect(expected.makeImage()?.dataProvider?.data == actual.makeImage()?.dataProvider?.data)
+
+    if Files.supportedFormats.contains(where: { $0.0 == "avif" }) {
+      let explicit = directory.appendingPathComponent("capture.avif")
+      #expect(try await Files.save(image, path: explicit.path) == explicit)
+      let decoded = try decodedImage(Data(contentsOf: explicit))
+      #expect(decoded.width == image.width && decoded.height == image.height)
+    }
   }
 
   @Test func compressionSettingSurvivesJSONAndINI() throws {

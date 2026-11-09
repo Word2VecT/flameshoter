@@ -43,6 +43,7 @@ import FlameshoterCore
   var onInteract: (() -> Bool)?
   var onRegionSettled: (() -> Void)?
   var onInspector: (() -> Void)?
+  var onCopyColor: ((String) -> Void)?
   let frost = PassiveFrost()
   let selectionGlass = PassiveGlass()
   let glassContent = PassiveView()
@@ -52,6 +53,8 @@ import FlameshoterCore
   let dimensions = NSTextField(labelWithString: "")
   let magnifier = PassiveGlass()
   let magnifierImage = PixelImageView()
+  let colorReadout = PassiveGlass()
+  let colorLabel = NSTextField(labelWithString: "")
   var handles: [PassiveImageView] = []
   var textEditor: NSTextView?
   private var textDraft: Annotation?
@@ -61,6 +64,8 @@ import FlameshoterCore
   private var lastPresentation: CGRect?
   private var renderedAnnotations: [Annotation] = []
   private var operation: DragOperation?
+  private var lastModifiers: NSEvent.ModifierFlags = []
+  private var colorFormat: ScreenColor.Format
   private var originalAnnotations: [Annotation]?
   private let automaticWindows: [SelectionWindow]
   private let displayFrame: CGRect
@@ -84,6 +89,7 @@ import FlameshoterCore
     automaticWindows = frame.windows
     displayFrame = frame.displayFrame
     automaticMode = Environment.shared.preferences.integer("autoSelectionMode")
+    colorFormat = ScreenColor.Format(rawValue: Environment.shared.preferences.integer("screenColorFormat")) ?? .hashHex
     document = CaptureDocument(
       image: frame.image, logicalSize: frame.logicalSize,
       undoLimit: Environment.shared.preferences.integer("undoLimit"))
@@ -147,6 +153,14 @@ import FlameshoterCore
     magnifier.isHidden = true
     magnifier.setAccessibilityElement(false)
     addSubview(magnifier)
+    colorLabel.alignment = .center
+    colorLabel.font = .monospacedDigitSystemFont(ofSize: 11, weight: .medium)
+    colorReadout.style = .regular
+    colorReadout.cornerRadius = 10
+    colorReadout.contentView = padded(colorLabel, inset: 5)
+    colorReadout.isHidden = true
+    colorReadout.setAccessibilityElement(false)
+    addSubview(colorReadout)
     refresh()
   }
   required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
@@ -600,29 +614,47 @@ import FlameshoterCore
   }
   override func mouseMoved(with event: NSEvent) {
     updateAutomaticSelection(at: point(event))
-    guard prefs.bool("showMagnifier"), tool?.isDrawing != true else {
+    updateMagnifier(at: point(event), modifiers: event.modifierFlags)
+  }
+  private func updateMagnifier(at p: CGPoint, modifiers: NSEvent.ModifierFlags) {
+    let temporary = modifiers.contains(.option)
+    guard bounds.contains(p), temporary || (prefs.bool("showMagnifier") && tool?.isDrawing != true) else {
       magnifier.isHidden = true
+      colorReadout.isHidden = true
       return
     }
-    let p = point(event)
     let scale = document.scale
     let side = 17
-    let x = min(max(0, Int(p.x * scale) - side / 2), document.image.width - side)
-    let y = min(max(0, Int(p.y * scale) - side / 2), document.image.height - side)
-    guard
-      let image = document.image.cropping(
-        to: CGRect(
-          x: max(0, x), y: max(0, y), width: min(side, document.image.width),
-          height: min(side, document.image.height)))
-    else { return }
+    guard let image = ScreenColor.neighborhood(document.image, point: p, scale: scale) else { return }
     magnifierImage.image = NSImage(cgImage: image, size: CGSize(width: side, height: side))
     magnifier.frame = CGRect(
-      x: min(bounds.width - 140, p.x + 24), y: min(bounds.height - 140, p.y + 24), width: 128,
+      x: max(0, min(bounds.width - 140, p.x + 24)),
+      y: max(0, min(bounds.height - 180, p.y + 24)), width: 128,
       height: 128)
     magnifier.isHidden = false
+    if let color = ScreenColor.sample(document.image, point: p, scale: scale) {
+      colorLabel.stringValue = color.string(colorFormat)
+      colorReadout.frame = CGRect(
+        x: max(0, min(bounds.width - 170, magnifier.frame.midX - 85)),
+        y: magnifier.frame.maxY + 4, width: 170, height: 30)
+      colorReadout.isHidden = false
+    } else { colorReadout.isHidden = true }
+  }
+  override func flagsChanged(with event: NSEvent) {
+    let flags = event.modifierFlags.intersection(Shortcut.relevant)
+    if flags.contains(.option), flags.contains(.shift), !lastModifiers.contains(.shift) {
+      let next = (colorFormat.rawValue + 1) % ScreenColor.Format.allCases.count
+      colorFormat = ScreenColor.Format(rawValue: next)!
+    }
+    lastModifiers = flags
+    if let window {
+      updateMagnifier(at: convert(window.mouseLocationOutsideOfEventStream, from: nil), modifiers: flags)
+    }
+    super.flagsChanged(with: event)
   }
   override func mouseExited(with event: NSEvent) {
     magnifier.isHidden = true
+    colorReadout.isHidden = true
     if document.selection == nil, operation == nil {
       automaticTask?.cancel()
       automaticWindow = nil
@@ -748,6 +780,15 @@ import FlameshoterCore
         return true
       }
       return false
+    }
+    if prefs.shortcut("TYPE_COPY_PIXEL_COLOR")?.matches(event) == true {
+      if let window, let color = ScreenColor.sample(
+        document.image, point: convert(window.mouseLocationOutsideOfEventStream, from: nil),
+        scale: document.scale)
+      {
+        onCopyColor?(color.string(colorFormat))
+      } else { NSSound.beep() }
+      return true
     }
     if event.keyCode == 53 {
       if selectedID != nil || tool != nil {

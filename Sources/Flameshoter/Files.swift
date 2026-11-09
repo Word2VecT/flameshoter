@@ -9,9 +9,9 @@ import UniformTypeIdentifiers
     let supported = CGImageDestinationCopyTypeIdentifiers() as? [String] ?? []
     return [
       ("png", "PNG", UTType.png), ("jpeg", "JPEG", .jpeg), ("tiff", "TIFF", .tiff),
-      ("bmp", "BMP", .bmp),
+      ("bmp", "BMP", .bmp), ("avif", "AVIF", UTType("public.avif")!),
     ].filter { supported.contains($0.2.identifier) }
-      + [("webp", localized("WebP (lossless)", "WebP（无损）"), .webP)]
+      + [("webp", localized("WebP (lossless)", "WebP（无损）"), .webP), ("pdf", "PDF", .pdf)]
   }
   static func save(
     _ image: CGImage, path: String? = nil, filename: String? = nil, forceDialog: Bool = false

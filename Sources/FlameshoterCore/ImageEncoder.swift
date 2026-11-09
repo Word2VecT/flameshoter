@@ -17,6 +17,7 @@ public enum ImageEncoder {
   public static func data(
     _ image: CGImage, format: String = "png", quality: Int = 75, optimize: Bool = false
   ) throws -> Data {
+    if format.lowercased() == "pdf" { return try pdf(image) }
     if format.lowercased() == "webp" {
       let original = try webP(image, method: 0)
       guard optimize else { return original }
@@ -29,6 +30,7 @@ public enum ImageEncoder {
     case "jpg", "jpeg": type = .jpeg
     case "tif", "tiff": type = .tiff
     case "bmp": type = .bmp
+    case "avif": type = UTType("public.avif")!
     default: throw ImageError.unsupportedFormat
     }
     let output = NSMutableData()
@@ -42,6 +44,19 @@ public enum ImageEncoder {
     guard CGImageDestinationFinalize(destination) else { throw ImageError.encodeFailed }
     let encoded = output as Data
     return optimize && type == .png ? try optimizePNG(encoded) : encoded
+  }
+
+  private static func pdf(_ image: CGImage) throws -> Data {
+    let output = NSMutableData()
+    var page = CGRect(x: 0, y: 0, width: image.width, height: image.height)
+    guard let consumer = CGDataConsumer(data: output),
+      let context = CGContext(consumer: consumer, mediaBox: &page, nil)
+    else { throw ImageError.encodeFailed }
+    context.beginPDFPage(nil)
+    context.draw(image, in: page)
+    context.endPDFPage()
+    context.closePDF()
+    return output as Data
   }
 
   private static func optimizePNG(_ input: Data) throws -> Data {

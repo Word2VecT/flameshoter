@@ -2,7 +2,7 @@
 import AppKit
 
 public struct Preferences: Codable, Equatable, Sendable {
-  public var schemaVersion = 3
+  public var schemaVersion = 4
   public var values: [String: String] = [:]
   public var shortcuts = Shortcut.defaults
   public var unassignedShortcuts: Set<String> = []
@@ -15,7 +15,7 @@ public struct Preferences: Codable, Equatable, Sendable {
     "allowMultipleGuiInstances": "false", "showDesktopNotification": "false",
     "showAbortNotification": "false", "showHelp": "true", "showQuitPrompt": "true",
     "saveLastRegion": "true", "copyOnDoubleClick": "false", "showMagnifier": "false",
-    "autoSelectionMode": "2",
+    "autoSelectionMode": "2", "screenColorFormat": "0",
     "squareMagnifier": "false", "showSidePanelButton": "true", "useNativeFullscreen": "false",
     "showSelectionGeometry": "4", "showSelectionGeometryHideTime": "3000", "undoLimit": "100",
     "antialiasingPinZoom": "true", "useSystemAccentColor": "true", "uiColor": "#007aff",
@@ -220,6 +220,15 @@ public final class SettingsStore {
       }
       preferences.schemaVersion = 3
     }
+    if preferences.schemaVersion < 4 {
+      let name = "TYPE_COPY_PIXEL_COLOR"
+      if let shortcut = Shortcut.defaults[name], preferences.shortcuts.contains(where: {
+        $0.key != name && !preferences.unassignedShortcuts.contains($0.key) && $0.value == shortcut
+      }) {
+        preferences.unassignedShortcuts.insert(name)
+      }
+      preferences.schemaVersion = 4
+    }
     return preferences.schemaVersion != previousVersion
   }
   public static func validate(_ p: Preferences) throws {
@@ -229,7 +238,7 @@ public final class SettingsStore {
       "drawThickness": 1...500, "drawRectangleSize": 1...500, "drawMarkerSize": 1...500,
       "drawFontSize": 1...500, "drawCircleCounterSize": 1...500, "drawPixelateSize": 1...500,
       "arrowStyle": 0...1, "textAlignment": 0...2,
-      "autoSelectionMode": 0...2,
+      "autoSelectionMode": 0...2, "screenColorFormat": 0...5,
     ]
     for (key, range) in ranges {
       guard let n = Int(p.string(key)), range.contains(n) else { throw SettingsError.invalid(key) }
@@ -237,7 +246,7 @@ public final class SettingsStore {
     guard ["auto", "en", "zh_CN", "zh-Hans"].contains(p.string("uiLanguage")) else {
       throw SettingsError.invalid("uiLanguage")
     }
-    guard ["png", "jpg", "jpeg", "webp", "tiff", "bmp"].contains(p.string("saveAsFileExtension"))
+    guard ["png", "jpg", "jpeg", "webp", "tiff", "bmp", "avif", "pdf"].contains(p.string("saveAsFileExtension"))
     else { throw SettingsError.invalid("saveAsFileExtension") }
     guard (3...17).contains(p.colors.count) else { throw SettingsError.invalid("colors") }
     for color in p.colors + [p.color("drawColor")] {

@@ -270,6 +270,12 @@ import UserNotifications
         secondary: true),
     ]
     page("General", "通用", "gearshape", general)
+    let colorShortcut = p.shortcut("TYPE_COPY_PIXEL_COLOR")?.display
+    let colorHint = colorShortcut.map {
+      localized("Hold Option to inspect a pixel, Shift to change formats, and \($0) to copy.",
+                "按住 Option 查看像素，按 Shift 切换格式，按 \($0) 复制颜色。")
+    } ?? localized("Hold Option to inspect a pixel. Assign a copy-color shortcut in Shortcuts.",
+                   "按住 Option 查看像素。可在快捷键中设置复制颜色的按键。")
     page(
       "Capture", "截图", "viewfinder",
       [
@@ -291,6 +297,8 @@ import UserNotifications
         boolean("copyOnDoubleClick", "Double-click to copy", "双击复制截图"),
         boolean("showMagnifier", "Show pixel magnifier", "显示像素放大镜"),
         boolean("squareMagnifier", "Use a square magnifier", "使用方形放大镜"),
+        popup("screenColorFormat", "Copied color format", "复制颜色的格式", ScreenColor.Format.allCases.map(\.title)),
+        label(colorHint, secondary: true),
         boolean("showSidePanelButton", "Show Tool Settings button", "显示工具设置按钮"),
         boolean("useNativeFullscreen", "Use native macOS fullscreen", "使用 macOS 原生全屏"),
         popup(
@@ -401,12 +409,12 @@ import UserNotifications
             "%Y 年 · %m 月 · %d 日 · %H 时 · %M 分 · %S 秒\n示例：截图_%F_%H-%M-%S"), secondary: true),
         popup(
           "saveAsFileExtension", "Image format", "图片格式", formats.map(\.1), values: formats.map(\.0)),
-        integer("jpegQuality", "JPEG quality", "JPEG 质量", 0...100),
+        integer("jpegQuality", "JPEG / AVIF quality", "JPEG / AVIF 质量", 0...100),
         boolean("losslessCompression", "Automatically compress losslessly", "自动无损压缩"),
         label(
           localized(
-            "Optimize PNG and lossless WebP before saving or copying, preserving pixels and color profiles. JPEG quality is set separately.",
-            "保存或复制前优化 PNG 与无损 WebP，保留像素和色彩配置。JPEG 质量单独设置。"), secondary: true),
+            "Optimize PNG and lossless WebP before saving or copying, preserving pixels and color profiles. JPEG and AVIF use the quality setting above.",
+            "保存或复制前优化 PNG 与无损 WebP，保留像素和色彩配置。JPEG 和 AVIF 使用上面的质量设置。"), secondary: true),
         boolean("saveAfterCopy", "Also save after copying", "复制后同时保存"),
         boolean("copyPathAfterSave", "Copy the path after saving", "保存后复制路径"),
         boolean("useJpgForClipboard", "Use JPEG on the clipboard", "以 JPEG 格式复制到剪贴板"),
@@ -494,6 +502,7 @@ import UserNotifications
       "TYPE_DELETE_CURRENT_TOOL": ("Delete annotation", "删除标注"),
       "TYPE_COMMIT_CURRENT_TOOL": ("Commit text", "完成文字编辑"),
       "TYPE_GRAB_COLOR": ("Pick a screen color", "拾取屏幕颜色"),
+      "TYPE_COPY_PIXEL_COLOR": ("Copy pixel color", "复制像素颜色"),
       "TYPE_CLOSE_ACTIVE_PIN_WINDOW": ("Close pinned capture", "关闭置顶截图"),
       "TYPE_MOVE_LEFT": ("Move left", "向左移动选区"), "TYPE_MOVE_RIGHT": ("Move right", "向右移动选区"),
       "TYPE_MOVE_UP": ("Move up", "向上移动选区"), "TYPE_MOVE_DOWN": ("Move down", "向下移动选区"),

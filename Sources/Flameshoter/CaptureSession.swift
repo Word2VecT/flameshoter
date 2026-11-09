@@ -82,6 +82,16 @@ import FlameshoterCore
       canvas.onInteract = { [weak self] in self?.activate(index) ?? false }
       canvas.onChange = { [weak self] in self?.update(index) }
       canvas.onInspector = { [weak toolbar] in toolbar?.toggleInspector() }
+      canvas.onCopyColor = { [weak self] value in
+        guard let self else { return }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(value, forType: .string)
+        let expectsImage = self.command.copy || self.command.raw || self.command.path != nil
+          || self.command.pin || self.command.geometry
+        self.app?.respond(self.command, error: expectsImage
+          ? localized("Color copied; capture cancelled.", "已复制颜色，截图已取消。") : nil)
+        self.close()
+      }
       canvas.onRegionSettled = { [weak self] in
         guard let self else { return }
         self.update(index)

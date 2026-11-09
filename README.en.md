@@ -26,7 +26,7 @@
 - In-app annotation: pencil, lines, arrows, shapes, text, numbers and redaction.
 - Copy, save, pin and share through the macOS share sheet.
 - Recognize text and QR codes offline in captures and pinned images; select text directly in images.
-- Automatic lossless PNG optimization before saving or copying, plus lossless WebP export. Optimization can be disabled in Settings.
+- Pick and copy colors in HEX, RGB, HSV and other formats; save as PNG, lossless WebP, PDF, AVIF and more. PNG optimization is optional.
 - English, Simplified Chinese and customizable shortcuts.
 - Native Apple Liquid Glass interface.
 
@@ -59,6 +59,7 @@ These are the defaults. Shortcuts can be changed in Settings.
 | ⌘Z / ⌘⇧Z | Undo / redo |
 | ⌘P | Pin capture |
 | ⇧C / Q | Recognize text / QR code |
+| ⌥C | Copy the color under the pointer; hold ⌥ and press ⇧ to change formats |
 | Space / right-click | Tool settings |
 | Esc | Cancel capture |
 
