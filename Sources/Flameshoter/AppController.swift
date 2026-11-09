@@ -11,9 +11,13 @@ import UserNotifications
   private var pins: [PinWindowController] = []
   private var contentPins: [ContentPinController] = []
   private enum ClosedPin {
-    case image(PinWindowController), content(ContentPinController)
+    case image(PinWindowController), content(ContentPinController), archived(ArchivedPin)
     var archiveID: UUID {
-      switch self { case .image(let pin): return pin.archiveID; case .content(let pin): return pin.archiveID }
+      switch self {
+      case .image(let pin): return pin.archiveID
+      case .content(let pin): return pin.archiveID
+      case .archived(let pin): return pin.id
+      }
     }
   }
   private var closedPins: [ClosedPin] = []
@@ -135,7 +139,11 @@ import UserNotifications
     for pin in pins { persist(pin) }
     for pin in contentPins { persist(pin, includeText: true) }
     for pin in closedPins {
-      switch pin { case .image(let controller): persist(controller); case .content(let controller): persist(controller, includeText: true) }
+      switch pin {
+      case .image(let controller): persist(controller)
+      case .content(let controller): persist(controller, includeText: true)
+      case .archived: break
+      }
     }
     pinArchive.flush { [weak self] result in
       Task { @MainActor [weak self] in
@@ -486,9 +494,9 @@ import UserNotifications
       guard let self, !self.terminating else { return }
       self.cancelPinUpdate(closed.archiveID)
       closed.closed = Date()
-      self.persist(closed)
       self.pins.removeAll { $0 === closed }
       self.closedPins.append(.image(closed))
+      self.persist(closed, releaseWhenSaved: true)
       self.trimPinHistory()
     }
     controller.onChange = { [weak self] pin in self?.schedulePinUpdate(pin) }
@@ -509,9 +517,9 @@ import UserNotifications
       guard let self, !self.terminating else { return }
       self.cancelPinUpdate(closed.archiveID)
       closed.closed = Date()
-      self.persist(closed, includeText: true)
       self.contentPins.removeAll { $0 === closed }
       self.closedPins.append(.content(closed))
+      self.persist(closed, includeText: true, releaseWhenSaved: true)
       self.trimPinHistory()
     }
     controller.onChange = { [weak self] pin, contentChanged in
@@ -551,6 +559,7 @@ import UserNotifications
       controller.closed = nil; pins.append(controller); controller.show(); persist(controller)
     case .content(let controller):
       controller.closed = nil; contentPins.append(controller); controller.show(); persist(controller, includeText: false)
+    case .archived(let record): restoreArchivedPin(record, reopeningClosed: true)
     }
   }
   private func trimPinHistory() {
@@ -568,11 +577,22 @@ import UserNotifications
   private func pinRecord(_ pin: ContentPinController) -> ArchivedPin {
     PinPersistence.record(id: pin.archiveID, kind: pin.archiveKind, created: pin.created, closed: pin.closed, window: pin.window)
   }
-  private func persist(_ pin: PinWindowController) { pinArchive.update(pinRecord(pin)) }
-  private func persist(_ pin: ContentPinController, includeText: Bool) {
+  private func releaseClosedPinWhenSaved() -> @Sendable (Result<ArchivedPin, Error>) -> Void {
+    { [weak self] result in
+      guard case .success(let record) = result else { return }
+      Task { @MainActor [weak self] in
+        guard let self, let index = self.closedPins.firstIndex(where: { $0.archiveID == record.id }) else { return }
+        self.closedPins[index] = .archived(record)
+      }
+    }
+  }
+  private func persist(_ pin: PinWindowController, releaseWhenSaved: Bool = false) {
+    pinArchive.update(pinRecord(pin), completion: releaseWhenSaved ? releaseClosedPinWhenSaved() : nil)
+  }
+  private func persist(_ pin: ContentPinController, includeText: Bool, releaseWhenSaved: Bool = false) {
     do {
       let payload = includeText && pin.archiveKind == .text ? try pin.archivedPayload().1 : nil
-      pinArchive.update(pinRecord(pin), payload: payload)
+      pinArchive.update(pinRecord(pin), payload: payload, completion: releaseWhenSaved ? releaseClosedPinWhenSaved() : nil)
     } catch { showPinArchiveError(error) }
   }
   private func cancelPinUpdate(_ id: UUID) {
@@ -612,34 +632,49 @@ import UserNotifications
           var restoredClosed: [ClosedPin] = []
           let keepOpen = Environment.shared.preferences.bool("restoreOpenPins")
           let ordered = entries.sorted {
-            ($0.record.closed ?? (keepOpen ? .distantPast : .distantFuture))
-              < ($1.record.closed ?? (keepOpen ? .distantPast : .distantFuture))
+            ($0.closed ?? (keepOpen ? .distantPast : .distantFuture))
+              < ($1.closed ?? (keepOpen ? .distantPast : .distantFuture))
           }
-          for entry in ordered {
-            let record = entry.record
-            let reopen = record.closed == nil && keepOpen
-            let closed = record.closed ?? (reopen ? nil : Date())
-            do {
-              if record.kind == .image {
-                let pin = PinWindowController(image: try PinPersistence.image(entry.data), id: record.id, created: record.created)
-                pin.closed = closed
-                self.configure(pin)
-                PinPersistence.restoreWindow(pin.window, from: record)
-                if reopen { self.pins.append(pin); pin.show() } else { restoredClosed.append(.image(pin)) }
-                if record.closed == nil && !reopen { self.persist(pin) }
-              } else {
-                let content = try PinPersistence.content(record.kind, data: entry.data)
-                let pin = ContentPinController(content: content, id: record.id, created: record.created)
-                pin.closed = closed
-                self.configure(pin)
-                PinPersistence.restoreWindow(pin.window, from: record)
-                if reopen { self.contentPins.append(pin); pin.show() } else { restoredClosed.append(.content(pin)) }
-                if record.closed == nil && !reopen { self.persist(pin, includeText: false) }
-              }
-            } catch { self.showPinArchiveError(error) }
+          for var record in ordered {
+            if record.closed == nil && keepOpen {
+              self.restoreArchivedPin(record, reopeningClosed: false)
+            } else {
+              if record.closed == nil { record.closed = Date(); self.pinArchive.update(record) }
+              restoredClosed.append(.archived(record))
+            }
           }
           self.closedPins.insert(contentsOf: restoredClosed, at: 0)
           self.trimPinHistory()
+        }
+      }
+    }
+  }
+  private func restoreArchivedPin(_ original: ArchivedPin, reopeningClosed: Bool) {
+    pinArchive.payload(for: original.id) { [weak self] result in
+      Task { @MainActor [weak self] in
+        guard let self, !self.terminating else { return }
+        do {
+          let loaded = try result.get()
+          let record = loaded.record
+          if record.kind == .image {
+            let pin = PinWindowController(image: try PinPersistence.image(loaded.data), id: record.id, created: record.created)
+            PinPersistence.restoreWindow(pin.window, from: record)
+            self.configure(pin)
+            self.pins.append(pin)
+            pin.show()
+            if reopeningClosed { self.persist(pin) }
+          } else {
+            let content = try PinPersistence.content(record.kind, data: loaded.data)
+            let pin = ContentPinController(content: content, id: record.id, created: record.created)
+            PinPersistence.restoreWindow(pin.window, from: record)
+            self.configure(pin)
+            self.contentPins.append(pin)
+            pin.show()
+            if reopeningClosed { self.persist(pin, includeText: false) }
+          }
+        } catch {
+          if reopeningClosed { self.closedPins.append(.archived(original)); self.trimPinHistory() }
+          self.showPinArchiveError(error)
         }
       }
     }

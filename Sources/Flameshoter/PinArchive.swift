@@ -2,8 +2,8 @@
 import AppKit
 import FlameshoterCore
 
-struct ArchivedPin: Codable {
-  enum Kind: String, Codable { case image, text, color, file, gif, webP }
+struct ArchivedPin: Codable, Sendable {
+  enum Kind: String, Codable, Sendable { case image, text, color, file, gif, webP }
   let id: UUID
   let kind: Kind
   let created: Date
@@ -13,7 +13,7 @@ struct ArchivedPin: Codable {
   var payloadFile: String
 }
 
-struct LoadedPin {
+struct LoadedPin: Sendable {
   let record: ArchivedPin
   let data: Data
 }
@@ -44,24 +44,40 @@ final class PinArchive: @unchecked Sendable {
     }
   }
 
-  func load(_ completion: @escaping @Sendable (Result<[LoadedPin], Error>) -> Void) {
+  func load(_ completion: @escaping @Sendable (Result<[ArchivedPin], Error>) -> Void) {
     queue.async {
       do {
         if let error = self.loadFailure { throw error }
-        let loaded = try self.records.map { record in
+        for record in self.records {
           guard !record.payloadFile.isEmpty,
             URL(fileURLWithPath: record.payloadFile).lastPathComponent == record.payloadFile
           else { throw CocoaError(.fileReadCorruptFile) }
-          return LoadedPin(
-            record: record,
-            data: try Data(contentsOf: self.directory.appendingPathComponent(record.payloadFile)))
         }
-        DispatchQueue.main.async { completion(.success(loaded)) }
+        let records = self.records
+        DispatchQueue.main.async { completion(.success(records)) }
       } catch {
         self.failedToLoad = true
         self.loadFailure = error
         DispatchQueue.main.async { completion(.failure(error)) }
       }
+    }
+  }
+
+  func payload(for id: UUID, completion: @escaping @Sendable (Result<LoadedPin, Error>) -> Void) {
+    queue.async {
+      let result: Result<LoadedPin, Error>
+      do {
+        if let error = self.loadFailure { throw error }
+        guard let record = self.records.first(where: { $0.id == id }) else {
+          throw CocoaError(.fileNoSuchFile)
+        }
+        guard !record.payloadFile.isEmpty,
+          URL(fileURLWithPath: record.payloadFile).lastPathComponent == record.payloadFile
+        else { throw CocoaError(.fileReadCorruptFile) }
+        let data = try Data(contentsOf: self.directory.appendingPathComponent(record.payloadFile))
+        result = .success(LoadedPin(record: record, data: data))
+      } catch { result = .failure(error) }
+      DispatchQueue.main.async { completion(result) }
     }
   }
 
@@ -82,10 +98,17 @@ final class PinArchive: @unchecked Sendable {
     }
   }
 
-  func update(_ record: ArchivedPin, payload: Data? = nil) {
+  func update(
+    _ record: ArchivedPin, payload: Data? = nil,
+    completion: (@Sendable (Result<ArchivedPin, Error>) -> Void)? = nil
+  ) {
     queue.async {
       guard !self.failedToLoad, let index = self.records.firstIndex(where: { $0.id == record.id })
-      else { return }
+      else {
+        let error = self.loadFailure ?? self.writeFailure ?? CocoaError(.fileNoSuchFile)
+        if let completion { DispatchQueue.main.async { completion(.failure(error)) } }
+        return
+      }
       do {
         let previous = self.records[index].payloadFile
         var new = record
@@ -97,9 +120,11 @@ final class PinArchive: @unchecked Sendable {
         if new.payloadFile != previous {
           try? FileManager.default.removeItem(at: self.directory.appendingPathComponent(previous))
         }
+        if let completion { DispatchQueue.main.async { completion(.success(new)) } }
       } catch {
         self.writeFailure = error
         self.onError(error)
+        if let completion { DispatchQueue.main.async { completion(.failure(error)) } }
       }
     }
   }

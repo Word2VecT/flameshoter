@@ -7,9 +7,15 @@ import UniformTypeIdentifiers
 @testable import Flameshoter
 @testable import FlameshoterCore
 
-private func loadPins(_ archive: PinArchive) async throws -> [LoadedPin] {
-  let result: Result<[LoadedPin], Error> = await withCheckedContinuation { continuation in
+private func loadPins(_ archive: PinArchive) async throws -> [ArchivedPin] {
+  let result: Result<[ArchivedPin], Error> = await withCheckedContinuation { continuation in
     archive.load { continuation.resume(returning: $0) }
+  }
+  return try result.get()
+}
+private func loadPin(_ archive: PinArchive, id: UUID) async throws -> LoadedPin {
+  let result: Result<LoadedPin, Error> = await withCheckedContinuation { continuation in
+    archive.payload(for: id) { continuation.resume(returning: $0) }
   }
   return try result.get()
 }
@@ -36,14 +42,18 @@ private func flushPins(_ archive: PinArchive) async throws {
   archive.add(second) { Data("animation".utf8) }
   first.closed = Date(timeIntervalSince1970: 200)
   first.frame.origin.x = 75
-  archive.update(first, payload: Data("edited".utf8))
+  let changed = first
+  let save: Result<ArchivedPin, Error> = await withCheckedContinuation { continuation in
+    archive.update(changed, payload: Data("edited".utf8)) { continuation.resume(returning: $0) }
+  }
+  #expect(try save.get().closed == changed.closed)
   try await flushPins(archive)
   let reopened = PinArchive(directory: directory) { error in
     Issue.record("Archive failed: \(error)")
   }
   let loaded = try await loadPins(reopened)
   #expect(loaded.count == 2)
-  let restored = try #require(loaded.first(where: { $0.record.id == first.id }))
+  let restored = try await loadPin(reopened, id: first.id)
   #expect(restored.data == Data("edited".utf8))
   #expect(restored.record.closed == first.closed && restored.record.frame == first.frame)
   #expect(restored.record.opacity == 0.8)
@@ -59,8 +69,8 @@ private func flushPins(_ archive: PinArchive) async throws {
   reopened.remove([first.id])
   try await flushPins(reopened)
   let remaining = try await loadPins(PinArchive(directory: directory) { _ in })
-  #expect(remaining.count == 1 && remaining[0].record.id == second.id)
-  #expect(remaining[0].data == Data("animation".utf8))
+  #expect(remaining.count == 1 && remaining[0].id == second.id)
+  #expect(try await loadPin(reopened, id: second.id).data == Data("animation".utf8))
   #expect(
     !FileManager.default.fileExists(
       atPath: directory.appendingPathComponent(restored.record.payloadFile).path))
@@ -88,6 +98,32 @@ private func flushPins(_ archive: PinArchive) async throws {
   } catch {}
   #expect(try Data(contentsOf: manifest) == original)
   #expect(try FileManager.default.contentsOfDirectory(atPath: directory.path) == ["history.json"])
+}
+
+@Test func closedPinContentsLoadOnlyWhenRequested() async throws {
+  let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+  defer { try? FileManager.default.removeItem(at: directory) }
+  let archive = PinArchive(directory: directory) { _ in }
+  let first = ArchivedPin(
+    id: UUID(), kind: .text, created: Date(), closed: Date(), frame: .zero, opacity: 1,
+    payloadFile: "")
+  let second = ArchivedPin(
+    id: UUID(), kind: .text, created: Date(), closed: Date(), frame: .zero, opacity: 1,
+    payloadFile: "")
+  archive.add(first) { Data("first".utf8) }
+  archive.add(second) { Data("second".utf8) }
+  try await flushPins(archive)
+  let records = try await loadPins(archive)
+  let missing = try #require(records.first(where: { $0.id == first.id }))
+  try FileManager.default.removeItem(at: directory.appendingPathComponent(missing.payloadFile))
+  let reopened = PinArchive(directory: directory) { _ in }
+  #expect(try await loadPins(reopened).count == 2)
+  #expect(try await loadPin(reopened, id: second.id).data == Data("second".utf8))
+  do {
+    _ = try await loadPin(reopened, id: first.id)
+    Issue.record("A missing payload was accepted")
+  } catch {}
+  #expect(try await loadPins(reopened).count == 2)
 }
 
 @Test func pinHistoryReportsWriteFailureWithoutDamagingExistingFile() async throws {
