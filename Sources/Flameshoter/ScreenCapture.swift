@@ -106,7 +106,7 @@ import ScreenCaptureKit
       let configuration = SCScreenshotConfiguration()
       configuration.width = Int(screen.frame.width * screen.backingScaleFactor)
       configuration.height = Int(screen.frame.height * screen.backingScaleFactor)
-      configuration.showsCursor = false
+      configuration.showsCursor = Environment.shared.preferences.bool("captureCursor")
       configuration.dynamicRange = .sdr
       configuration.displayIntent = .local
       let output = try await SCScreenshotManager.captureScreenshot(

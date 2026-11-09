@@ -24,6 +24,14 @@ import FlameshoterCore
     if canvas?.handleKey(event) == true { return true }
     return super.performKeyEquivalent(with: event)
   }
+  override func keyUp(with event: NSEvent) {
+    if canvas?.finishRefreshHold(event.keyCode) == true { return }
+    super.keyUp(with: event)
+  }
+  override func resignKey() {
+    canvas?.finishRefreshHold()
+    super.resignKey()
+  }
 }
 @MainActor final class CaptureSession {
   struct Surface {
@@ -37,6 +45,7 @@ import FlameshoterCore
   private(set) var activeIndex = 0
   var active: Surface { surfaces[activeIndex] }
   let command: NativeCommand
+  private let refreshSource: @MainActor () async throws -> [CapturedScreen]
   weak var app: AppController?
   private var closing = false
   private var sharing: CaptureSharing?
@@ -57,11 +66,22 @@ import FlameshoterCore
   }
   private var captureNavigation: [Int: CaptureNavigation] = [:]
   private var loadingCaptureHistory = false
+  private struct WindowPresentation {
+    let opaque: Bool
+    let background: NSColor?
+    let alpha: CGFloat
+    let ignoresMouse: Bool
+  }
+  private var revealedPresentation: [WindowPresentation]?
   var hasUnsavedRecording: Bool { recording?.hasUnsavedRecording ?? false }
   private var exporting = false
-  init(frames: [CapturedScreen], command: NativeCommand, app: AppController) {
+  init(
+    frames: [CapturedScreen], command: NativeCommand, app: AppController,
+    refreshSource: (@MainActor () async throws -> [CapturedScreen])? = nil
+  ) {
     self.command = command
     self.app = app
+    self.refreshSource = refreshSource ?? { try await CaptureService.capture(displayIndex: command.display) }
     for (index, frame) in frames.enumerated() {
       let nativeFullscreen = Environment.shared.preferences.bool("useNativeFullscreen")
       let window = CaptureWindow(
@@ -118,6 +138,8 @@ import FlameshoterCore
       }
       canvas.onRegionHistory = { [weak self] direction in self?.cycleRegion(on: index, direction: direction) }
       canvas.onCaptureHistory = { [weak self] direction in self?.cycleCapture(on: index, direction: direction) }
+      canvas.onRefreshStart = { [weak self] in self?.beginRefreshHold(on: index) ?? false }
+      canvas.onRefreshEnd = { [weak self] in self?.finishRefreshHold() }
     }
     if let screen = frames.firstIndex(where: { $0.screen.frame.contains(NSEvent.mouseLocation) }) {
       activeIndex = screen
@@ -343,6 +365,80 @@ import FlameshoterCore
       Environment.shared.captureHistory.record(snapshot, limit: limit)
     } catch { app?.showCaptureHistoryError(error) }
   }
+  private func beginRefreshHold(on index: Int) -> Bool {
+    guard !closing, !exporting, sharing == nil, longCapture == nil, recording == nil,
+      surfaces.indices.contains(index), activate(index), active.canvas.historySnapshot == nil
+    else { NSSound.beep(); return false }
+    exporting = true
+    active.canvas.commitText()
+    revealedPresentation = surfaces.map { surface in
+      let saved = WindowPresentation(
+        opaque: surface.window.isOpaque, background: surface.window.backgroundColor,
+        alpha: surface.canvas.alphaValue, ignoresMouse: surface.window.ignoresMouseEvents)
+      surface.toolbar.hide()
+      surface.hint.isHidden = true
+      surface.window.isOpaque = false
+      surface.window.backgroundColor = .clear
+      surface.window.ignoresMouseEvents = true
+      surface.canvas.alphaValue = 0
+      return saved
+    }
+    NSColorPanel.shared.orderOut(nil)
+    return true
+  }
+  private func finishRefreshHold() {
+    guard revealedPresentation != nil else { return }
+    Task { @MainActor [weak self] in
+      guard let self else { return }
+      var failure: Error?
+      do { try await self.refreshScreens() } catch { failure = error }
+      if let presentation = self.revealedPresentation {
+        for (surface, saved) in zip(self.surfaces, presentation) {
+          surface.window.isOpaque = saved.opaque
+          surface.window.backgroundColor = saved.background
+          surface.window.ignoresMouseEvents = saved.ignoresMouse
+          surface.canvas.alphaValue = saved.alpha
+        }
+        self.revealedPresentation = nil
+      }
+      self.exporting = false
+      guard !self.closing else { return }
+      for index in self.surfaces.indices { self.update(index) }
+      if let failure { self.showRefreshError(failure) }
+    }
+  }
+  private func showRefreshError(_ error: Error) {
+    guard !closing else { return }
+    hide()
+    warning(localized("Unable to refresh screenshot", "无法刷新截图"), errorMessage(error))
+    show()
+  }
+  private func refreshScreens() async throws {
+    guard !closing else { return }
+    let frames = try await refreshSource()
+    guard !closing else { return }
+    let replacements: [(Surface, CapturedScreen)] = try surfaces.map { surface in
+      guard let frame = frames.first(where: {
+        RegionHistory.displayIdentifier($0.screen) == RegionHistory.displayIdentifier(surface.screen)
+      }), frame.logicalSize == surface.canvas.document.logicalSize,
+        frame.image.width == surface.canvas.document.image.width,
+        frame.image.height == surface.canvas.document.image.height
+      else { throw CaptureError.display }
+      return (surface, frame)
+    }
+    for (index, replacement) in replacements.enumerated() {
+      let (surface, frame) = replacement
+      if surface.canvas.historySnapshot != nil, var navigation = captureNavigation[index] {
+        var live = CaptureDocument(image: frame.image, logicalSize: frame.logicalSize, undoLimit: navigation.live.undoLimit)
+        live.selection = navigation.live.selection
+        live.replaceAnnotations(navigation.live.annotations, recordingUndo: false)
+        navigation.live = live
+        captureNavigation[index] = navigation
+      } else {
+        surface.canvas.replaceScreen(frame)
+      }
+    }
+  }
   private static func savedRegion() -> CGRect? {
     let string = Environment.shared.preferences.string("lastRegion")
     guard !string.isEmpty else { return nil }
@@ -420,6 +516,14 @@ import FlameshoterCore
         canvas.applyStyle { $0.color = RGBA(color) }
       }
       show()
+      return
+    }
+    if tool == .refreshCapture {
+      guard canvas.historySnapshot == nil else { NSSound.beep(); return }
+      canvas.commitText()
+      do { try await refreshScreens() } catch {
+        showRefreshError(error)
+      }
       return
     }
     guard canvas.document.selection != nil else { return }

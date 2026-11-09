@@ -139,6 +139,11 @@ import FlameshoterCore
     }
     buttons[.undo]?.isEnabled = canvas.edits.canUndo
     buttons[.redo]?.isEnabled = canvas.edits.canRedo
+    buttons[.refreshCapture]?.isEnabled = canvas.historySnapshot == nil
+    if canvas.historySnapshot != nil {
+      buttons[.refreshCapture]?.toolTip = localized(
+        "Return to the current screenshot to refresh", "返回当前截图后可刷新")
+    }
     inspector?.refresh()
     guard let selection = canvas.document.selection else {
       root.isHidden = true

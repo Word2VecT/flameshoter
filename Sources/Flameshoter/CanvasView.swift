@@ -44,6 +44,8 @@ import FlameshoterCore
   var onRegionSettled: (() -> Void)?
   var onRegionHistory: ((Int) -> Void)?
   var onCaptureHistory: ((Int) -> Void)?
+  var onRefreshStart: (() -> Bool)?
+  var onRefreshEnd: (() -> Void)?
   var onInspector: (() -> Void)?
   var onCopyColor: ((String) -> Void)?
   let frost = PassiveFrost()
@@ -71,14 +73,15 @@ import FlameshoterCore
   private var lastModifiers: NSEvent.ModifierFlags = []
   private var colorFormat: ScreenColor.Format
   private var originalAnnotations: [Annotation]?
-  private let automaticWindows: [SelectionWindow]
-  private let displayFrame: CGRect
+  private var automaticWindows: [SelectionWindow]
+  private var displayFrame: CGRect
   private var automaticMode: Int
   private var automaticTask: Task<Void, Never>?
   private var automaticWindow: SelectionWindow?
   private var automaticChoices: [CGRect] = []
   private var automaticIndex = 0
   private var automaticPoint: CGPoint?
+  private var refreshKeyCode: UInt16?
   private(set) var suggestedSelection: CGRect?
   private var prefs: Preferences { Environment.shared.preferences }
   private enum DragOperation {
@@ -402,6 +405,25 @@ import FlameshoterCore
     selectedImage.image = NSImage(cgImage: document.image, size: document.logicalSize)
     needsDisplay = true
     refresh()
+  }
+  func replaceScreen(_ frame: CapturedScreen) {
+    commitText()
+    var replacement = CaptureDocument(
+      image: frame.image, logicalSize: frame.logicalSize, undoLimit: document.undoLimit)
+    replacement.selection = document.selection
+    replacement.replaceAnnotations(document.annotations, recordingUndo: false)
+    let selected = selectedID
+    automaticWindows = frame.windows
+    displayFrame = frame.displayFrame
+    replaceDocument(replacement, edits: edits)
+    selectedID = selected
+    refresh()
+  }
+  @discardableResult func finishRefreshHold(_ keyCode: UInt16? = nil) -> Bool {
+    guard let held = refreshKeyCode, keyCode == nil || keyCode == held else { return false }
+    refreshKeyCode = nil
+    onRefreshEnd?()
+    return true
   }
   private func point(_ event: NSEvent) -> CGPoint { convert(event.locationInWindow, from: nil) }
   private func bounded(_ point: CGPoint) -> CGPoint {
@@ -813,6 +835,12 @@ import FlameshoterCore
     refresh()
   }
   func handleKey(_ event: NSEvent) -> Bool {
+    if prefs.shortcut(Tool.refreshCapture.legacyName)?.matches(event) == true {
+      if refreshKeyCode == nil, !event.isARepeat, onRefreshStart?() == true {
+        refreshKeyCode = event.keyCode
+      }
+      return true
+    }
     if textEditor != nil {
       if prefs.shortcut("TYPE_COMMIT_CURRENT_TOOL")?.matches(event) == true {
         commitText()
@@ -921,6 +949,9 @@ import FlameshoterCore
     onRegionSettled?()
   }
   override func keyDown(with event: NSEvent) { if !handleKey(event) { super.keyDown(with: event) } }
+  override func keyUp(with event: NSEvent) {
+    if !finishRefreshHold(event.keyCode) { super.keyUp(with: event) }
+  }
   func perform(_ action: Tool) {
     switch action {
     case .undo:

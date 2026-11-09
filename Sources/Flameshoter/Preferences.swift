@@ -324,6 +324,8 @@ import UserNotifications
           }
         },
         boolean("copyOnDoubleClick", "Double-click to copy", "双击复制截图"),
+        boolean("captureCursor", "Include the mouse pointer in screenshots", "截图中包含鼠标指针"),
+        label(localized("The pointer is captured when a screenshot starts or is refreshed.", "鼠标指针会在开始截图或刷新时捕获。"), secondary: true),
         boolean("showMagnifier", "Show pixel magnifier", "显示像素放大镜"),
         boolean("squareMagnifier", "Use a square magnifier", "使用方形放大镜"),
         popup("screenColorFormat", "Copied color format", "复制颜色的格式", ScreenColor.Format.allCases.map(\.title)),

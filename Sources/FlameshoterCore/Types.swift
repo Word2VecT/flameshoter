@@ -68,10 +68,11 @@ public enum Tool: Int, Codable, CaseIterable, Identifiable, Sendable {
   case recognizeQRCode = 27
   case longCapture = 28
   case screenRecording = 29
+  case refreshCapture = 30
   // Preserve Flameshot's getIterableButtonTypes() order, adding native Share after Save.
   public static let toolbarOrder: [Tool] = [
     .pencil, .line, .arrow, .select, .rectangle, .ellipse, .marker, .text,
-    .counter, .pixelate, .invert, .moveSelection, .undo, .redo, .longCapture, .screenRecording, .recognizeText, .recognizeQRCode,
+    .counter, .pixelate, .invert, .moveSelection, .undo, .redo, .refreshCapture, .longCapture, .screenRecording, .recognizeText, .recognizeQRCode,
     .copy, .save, .share,
     .exit, .pin, .sizeIncrease, .sizeDecrease, .accept,
   ]
@@ -101,6 +102,7 @@ public enum Tool: Int, Codable, CaseIterable, Identifiable, Sendable {
     case .recognizeQRCode: return ("Recognize QR code", "识别二维码")
     case .longCapture: return ("Scrolling capture", "长截图")
     case .screenRecording: return ("Record screen", "录制屏幕")
+    case .refreshCapture: return ("Refresh screenshot", "刷新截图")
     case .exit: return ("Cancel capture", "取消截图")
     case .openWith: return ("Open with…", "使用其他应用打开…")
     case .pixelate: return ("Redact / pixelate", "遮挡 / 马赛克")
@@ -136,6 +138,7 @@ public enum Tool: Int, Codable, CaseIterable, Identifiable, Sendable {
     case .recognizeQRCode: return "qrcode.viewfinder"
     case .longCapture: return "scroll"
     case .screenRecording: return "record.circle"
+    case .refreshCapture: return "arrow.clockwise"
     case .pixelate: return "square.dashed.inset.filled"
     case .pin: return "pin"
     case .text: return "textformat"
@@ -157,6 +160,7 @@ public enum Tool: Int, Codable, CaseIterable, Identifiable, Sendable {
       .invert: "INVERT", .accept: "ACCEPT", .clearSelection: "CANCEL", .share: "SHARE",
       .recognizeText: "RECOGNIZE_TEXT", .recognizeQRCode: "RECOGNIZE_QR_CODE",
       .longCapture: "LONG_CAPTURE", .screenRecording: "SCREEN_RECORDING",
+      .refreshCapture: "REFRESH_CAPTURE",
     ]
     return "TYPE_" + names[self]!
   }
