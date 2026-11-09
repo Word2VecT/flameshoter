@@ -25,6 +25,7 @@
 - Region capture, multiple displays and delayed captures.
 - In-app annotation: pencil, lines, arrows, shapes, text, numbers and redaction.
 - Copy, save, pin and share through the macOS share sheet.
+- Recognize text and QR codes offline in captures and pinned images; select text directly in images.
 - Automatic lossless PNG optimization before saving or copying, plus lossless WebP export. Optimization can be disabled in Settings.
 - English, Simplified Chinese and customizable shortcuts.
 - Native Apple Liquid Glass interface.
@@ -57,6 +58,7 @@ These are the defaults. Shortcuts can be changed in Settings.
 | ⌘C / ⌘S / ⌘⇧S | Copy / save / share |
 | ⌘Z / ⌘⇧Z | Undo / redo |
 | ⌘P | Pin capture |
+| ⇧C / Q | Recognize text / QR code |
 | Space / right-click | Tool settings |
 | Esc | Cancel capture |
 

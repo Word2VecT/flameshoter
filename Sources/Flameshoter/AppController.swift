@@ -9,6 +9,7 @@ import UserNotifications
   private var preferences: PreferencesController?
   private var sessions: [CaptureSession] = []
   private var pins: [PinWindowController] = []
+  private var recognitionWindows: [RecognitionWindowController] = []
   private var observers: [NSObjectProtocol] = []
   private var commandObserver: NSObjectProtocol?
   private let hotkey = GlobalHotkey()
@@ -384,7 +385,18 @@ import UserNotifications
   func pin(_ image: CGImage, screen: NSScreen? = NSScreen.main) {
     let controller = PinWindowController(image: image, screen: screen)
     controller.onClose = { [weak self] closed in self?.pins.removeAll { $0 === closed } }
+    controller.onRecognize = { [weak self] image, kind in self?.recognize(image, kind: kind) }
     pins.append(controller)
+    controller.show()
+  }
+  func recognize(_ image: CGImage, kind: RecognitionKind) {
+    // An interactive CLI capture must stay alive while its result window is open.
+    standaloneCapture = false
+    let controller = RecognitionWindowController(image: image, kind: kind)
+    controller.onClose = { [weak self] closed in
+      self?.recognitionWindows.removeAll { $0 === closed }
+    }
+    recognitionWindows.append(controller)
     controller.show()
   }
   func respond(

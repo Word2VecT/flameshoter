@@ -69,7 +69,9 @@ import FlameshoterCore
     root.setAccessibilityLabel(localized("Annotation toolbar", "标注工具栏"))
     inspectorButton.invoke = { [weak self] in self?.toggleInspector() }
     let outputRequested = command.copy || command.raw || command.path != nil || command.pin
-    let excluded: [Tool] = outputRequested ? [.copy, .save, .share, .openWith, .pin] : [.accept]
+    var excluded: [Tool] = outputRequested
+      ? [.copy, .save, .share, .openWith, .pin, .recognizeText, .recognizeQRCode] : [.accept]
+    if command.geometry { excluded += [.recognizeText, .recognizeQRCode] }
     for tool in Tool.toolbarOrder where prefs.tools.contains(tool) && !excluded.contains(tool) {
       let button = makeButton(tool)
       root.controls.append(button)

@@ -88,6 +88,7 @@ public struct Shortcut: Codable, Equatable, Sendable {
       "TYPE_MOVESELECTION": "H", "TYPE_PIXELATE": "B", "TYPE_TEXT": "T", "TYPE_CIRCLECOUNT": "N",
       "TYPE_INVERT": "I", "TYPE_UNDO": "Ctrl+Z", "TYPE_REDO": "Ctrl+Shift+Z", "TYPE_COPY": "Ctrl+C",
       "TYPE_SAVE": "Ctrl+S", "TYPE_SHARE": "Ctrl+Shift+S", "TYPE_PIN": "Ctrl+P",
+      "TYPE_RECOGNIZE_TEXT": "Shift+C", "TYPE_RECOGNIZE_QR_CODE": "Q",
       "TYPE_OPEN_APP": "Ctrl+O", "TYPE_EXIT": "Escape",
       "TYPE_ACCEPT": "Return", "TYPE_CANCEL": "Ctrl+Backspace", "TYPE_TOGGLE_PANEL": "Space",
       "TYPE_SELECT_ALL": "Ctrl+A", "TYPE_COMMIT_CURRENT_TOOL": "Ctrl+Return",

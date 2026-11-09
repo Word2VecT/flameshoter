@@ -271,6 +271,12 @@ import FlameshoterCore
       let image = try canvas.rendered()
       let selection = canvas.document.pixelSelection
       switch tool {
+      case .recognizeText, .recognizeQRCode:
+        guard !command.copy, !command.raw, command.path == nil, !command.pin, !command.geometry else {
+          return
+        }
+        hide()
+        app?.recognize(image, kind: tool == .recognizeText ? .text : .qrCode)
       case .share:
         share(image)
         return

@@ -155,8 +155,8 @@ private func pixels(_ image: CGImage) -> [UInt8] {
   try JSONEncoder().encode(old).write(to: url)
   let upgraded = SettingsStore(url: url)
   #expect(upgraded.loadError == nil)
-  #expect(upgraded.preferences.schemaVersion == 2)
-  #expect(upgraded.preferences.tools == [.pencil, .copy, .share])
+  #expect(upgraded.preferences.schemaVersion == 3)
+  #expect(upgraded.preferences.tools == [.pencil, .copy, .share, .recognizeText, .recognizeQRCode])
   #expect(upgraded.preferences.values == old.values)
   #expect(upgraded.preferences.shortcuts == old.shortcuts)
   upgraded.update {
@@ -170,6 +170,28 @@ private func pixels(_ image: CGImage) -> [UInt8] {
   let imported = try SettingsStore.parseINI(String(contentsOf: ini, encoding: .utf8))
   #expect(imported.shortcut("TYPE_SHARE") == Shortcut(1, [.command, .shift]))
   #expect(!imported.tools.contains(.share))
+}
+
+@Test func recognitionUpgradePreservesHiddenToolsAndAvoidsShortcutConflicts() throws {
+  let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+  try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+  defer { try? FileManager.default.removeItem(at: root) }
+  let url = root.appendingPathComponent("settings.json")
+  var old = Preferences()
+  old.schemaVersion = 2
+  old.tools = [.copy]
+  old.shortcuts.removeValue(forKey: Tool.recognizeText.legacyName)
+  old.shortcuts.removeValue(forKey: Tool.recognizeQRCode.legacyName)
+  old.shortcuts["TYPE_COPY"] = Shortcut(8, [.shift])
+  try JSONEncoder().encode(old).write(to: url)
+  let upgraded = SettingsStore(url: url)
+  #expect(upgraded.preferences.tools == [.copy, .recognizeText, .recognizeQRCode])
+  #expect(upgraded.preferences.shortcut(Tool.recognizeText.legacyName) == nil)
+  #expect(upgraded.preferences.shortcut(Tool.recognizeQRCode.legacyName) == Shortcut(12))
+  upgraded.update { $0.tools.removeAll { $0 == .recognizeQRCode } }
+  let reopened = SettingsStore(url: url)
+  #expect(!reopened.preferences.tools.contains(.recognizeQRCode))
+  #expect(reopened.preferences.shortcut("TYPE_COPY") == Shortcut(8, [.shift]))
 }
 
 @Test func existingSettingsGainTheShareShortcutWithoutReplacingOverrides() {

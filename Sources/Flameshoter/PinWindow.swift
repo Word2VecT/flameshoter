@@ -1,10 +1,24 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import AppKit
 import FlameshoterCore
+import VisionKit
 
 @MainActor final class PinImageView: NSImageView {
   weak var controller: PinWindowController?
+  weak var textOverlay: ImageAnalysisOverlayView?
   override var acceptsFirstResponder: Bool { true }
+  override func hitTest(_ point: NSPoint) -> NSView? {
+    guard let hit = super.hitTest(point) else { return nil }
+    guard let textOverlay else { return hit }
+    let location = textOverlay.convert(point, from: superview)
+    if textOverlay.analysisHasText(at: location) || textOverlay.hasText(at: location)
+      || textOverlay.hasActiveTextSelection
+      || textOverlay.hasSupplementaryInterface(at: location)
+    {
+      return hit
+    }
+    return self
+  }
   override func mouseDown(with event: NSEvent) { window?.performDrag(with: event) }
   override func scrollWheel(with event: NSEvent) {
     guard let window else { return }
@@ -23,6 +37,14 @@ import FlameshoterCore
       window?.close()
       return
     }
+    if Environment.shared.preferences.shortcut(Tool.recognizeText.legacyName)?.matches(event) == true {
+      controller?.recognizeText(nil)
+      return
+    }
+    if Environment.shared.preferences.shortcut(Tool.recognizeQRCode.legacyName)?.matches(event) == true {
+      controller?.recognizeQRCode(nil)
+      return
+    }
     if event.modifierFlags.contains(.command), event.keyCode == 8 {
       controller?.copyImage(nil)
       return
@@ -35,10 +57,16 @@ import FlameshoterCore
   }
   override func menu(for event: NSEvent) -> NSMenu? {
     let menu = NSMenu()
+    appendActions(to: menu)
+    return menu
+  }
+  func appendActions(to menu: NSMenu) {
     for (title, selector) in [
       (localized("Copy", "复制"), #selector(PinWindowController.copyImage(_:))),
       (localized("Save…", "保存…"), #selector(PinWindowController.saveImage(_:))),
       (localized("Open with…", "使用其他应用打开…"), #selector(PinWindowController.openImage(_:))),
+      (localized("Recognize text…", "识别文字…"), #selector(PinWindowController.recognizeText(_:))),
+      (localized("Recognize QR code…", "识别二维码…"), #selector(PinWindowController.recognizeQRCode(_:))),
       (localized("Actual size", "实际大小"), #selector(PinWindowController.actualSize(_:))),
       (localized("Close", "关闭"), #selector(PinWindowController.closeImage(_:))),
     ] {
@@ -46,13 +74,17 @@ import FlameshoterCore
       item.target = controller
       menu.addItem(item)
     }
-    return menu
   }
 }
-@MainActor final class PinWindowController: NSWindowController, NSWindowDelegate {
+@MainActor final class PinWindowController: NSWindowController, NSWindowDelegate,
+  ImageAnalysisOverlayViewDelegate
+{
   let image: CGImage
   let imageView = PinImageView()
   var onClose: ((PinWindowController) -> Void)?
+  var onRecognize: ((CGImage, RecognitionKind) -> Void)?
+  private let textOverlay = ImageAnalysisOverlayView()
+  private var analysisStarted = false
   private let naturalSize: CGSize
   init(image: CGImage, screen: NSScreen? = NSScreen.main) {
     self.image = image
@@ -80,6 +112,13 @@ import FlameshoterCore
     imageView.wantsLayer = true
     imageView.layer?.magnificationFilter =
       Environment.shared.preferences.bool("antialiasingPinZoom") ? .linear : .nearest
+    textOverlay.frame = imageView.bounds
+    textOverlay.autoresizingMask = [.width, .height]
+    textOverlay.trackingImageView = imageView
+    textOverlay.preferredInteractionTypes = .textSelection
+    textOverlay.delegate = self
+    imageView.textOverlay = textOverlay
+    imageView.addSubview(textOverlay)
     window.contentView = imageView
     window.center()
     if let visible = screen?.visibleFrame,
@@ -94,6 +133,13 @@ import FlameshoterCore
     showWindow(nil)
     window?.makeKeyAndOrderFront(nil)
     NSApp.activate()
+    if !analysisStarted {
+      analysisStarted = true
+      Task { [weak self] in
+        guard let self else { return }
+        self.textOverlay.analysis = try? await ImageRecognition.text(self.image)
+      }
+    }
   }
   func zoom(_ factor: CGFloat) {
     guard let window else { return }
@@ -105,6 +151,11 @@ import FlameshoterCore
         height: size.height), display: true)
   }
   @objc func copyImage(_ sender: Any?) {
+    if !textOverlay.selectedText.isEmpty {
+      NSPasteboard.general.clearContents()
+      NSPasteboard.general.setString(textOverlay.selectedText, forType: .string)
+      return
+    }
     Task {
       do {
         try await ImageRenderer.copy(
@@ -129,6 +180,23 @@ import FlameshoterCore
     }
   }
   @objc func actualSize(_ sender: Any?) { window?.setContentSize(naturalSize) }
+  @objc func recognizeText(_ sender: Any?) { onRecognize?(image, .text) }
+  @objc func recognizeQRCode(_ sender: Any?) { onRecognize?(image, .qrCode) }
   @objc func closeImage(_ sender: Any?) { window?.close() }
+  func overlayView(
+    _ overlayView: ImageAnalysisOverlayView, shouldBeginAt point: CGPoint,
+    forAnalysisType analysisType: ImageAnalysisOverlayView.InteractionTypes
+  ) -> Bool {
+    overlayView.analysisHasText(at: point) || overlayView.hasInteractiveItem(at: point)
+      || overlayView.hasActiveTextSelection
+  }
+  func overlayView(
+    _ overlayView: ImageAnalysisOverlayView, updatedMenuFor menu: NSMenu, for event: NSEvent,
+    at point: CGPoint
+  ) -> NSMenu {
+    if !menu.items.isEmpty { menu.addItem(.separator()) }
+    imageView.appendActions(to: menu)
+    return menu
+  }
   func windowWillClose(_ notification: Notification) { onClose?(self) }
 }

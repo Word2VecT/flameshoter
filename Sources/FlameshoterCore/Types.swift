@@ -64,10 +64,13 @@ public enum Tool: Int, Codable, CaseIterable, Identifiable, Sendable {
   case accept = 23
   case clearSelection = 24
   case share = 25
+  case recognizeText = 26
+  case recognizeQRCode = 27
   // Preserve Flameshot's getIterableButtonTypes() order, adding native Share after Save.
   public static let toolbarOrder: [Tool] = [
     .pencil, .line, .arrow, .select, .rectangle, .ellipse, .marker, .text,
-    .counter, .pixelate, .invert, .moveSelection, .undo, .redo, .copy, .save, .share,
+    .counter, .pixelate, .invert, .moveSelection, .undo, .redo, .recognizeText, .recognizeQRCode,
+    .copy, .save, .share,
     .exit, .pin, .sizeIncrease, .sizeDecrease, .accept,
   ]
   public static let defaultToolbar = toolbarOrder.filter {
@@ -92,6 +95,8 @@ public enum Tool: Int, Codable, CaseIterable, Identifiable, Sendable {
     case .copy: return ("Copy", "复制")
     case .save: return ("Save", "保存")
     case .share: return ("Share", "分享")
+    case .recognizeText: return ("Recognize text", "文字识别")
+    case .recognizeQRCode: return ("Recognize QR code", "识别二维码")
     case .exit: return ("Cancel capture", "取消截图")
     case .openWith: return ("Open with…", "使用其他应用打开…")
     case .pixelate: return ("Redact / pixelate", "遮挡 / 马赛克")
@@ -123,6 +128,8 @@ public enum Tool: Int, Codable, CaseIterable, Identifiable, Sendable {
     case .exit: return "xmark"
     case .openWith: return "square.and.arrow.up"
     case .share: return "square.and.arrow.up"
+    case .recognizeText: return "text.viewfinder"
+    case .recognizeQRCode: return "qrcode.viewfinder"
     case .pixelate: return "square.dashed.inset.filled"
     case .pin: return "pin"
     case .text: return "textformat"
@@ -142,6 +149,7 @@ public enum Tool: Int, Codable, CaseIterable, Identifiable, Sendable {
       .openWith: "OPEN_APP", .pixelate: "PIXELATE", .redo: "REDO", .pin: "PIN", .text: "TEXT",
       .counter: "CIRCLECOUNT", .sizeIncrease: "SIZEINCREASE", .sizeDecrease: "SIZEDECREASE",
       .invert: "INVERT", .accept: "ACCEPT", .clearSelection: "CANCEL", .share: "SHARE",
+      .recognizeText: "RECOGNIZE_TEXT", .recognizeQRCode: "RECOGNIZE_QR_CODE",
     ]
     return "TYPE_" + names[self]!
   }

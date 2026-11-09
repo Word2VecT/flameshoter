@@ -2,7 +2,7 @@
 import AppKit
 
 public struct Preferences: Codable, Equatable, Sendable {
-  public var schemaVersion = 2
+  public var schemaVersion = 3
   public var values: [String: String] = [:]
   public var shortcuts = Shortcut.defaults
   public var unassignedShortcuts: Set<String> = []
@@ -76,11 +76,7 @@ public final class SettingsStore {
       do {
         preferences = try JSONDecoder().decode(Preferences.self, from: Data(contentsOf: url))
         try Self.validate(preferences)
-        if preferences.schemaVersion < 2 {
-          if !preferences.tools.contains(.share) { preferences.tools.append(.share) }
-          preferences.schemaVersion = 2
-          try save()
-        }
+        if Self.migrate(&preferences) { try save() }
       } catch {
         loadError = error
         preferences = Preferences()
@@ -116,11 +112,12 @@ public final class SettingsStore {
   }
   public func importFile(_ file: URL) throws {
     let data = try Data(contentsOf: file)
-    let imported =
+    var imported =
       file.pathExtension.lowercased() == "json"
       ? try JSONDecoder().decode(Preferences.self, from: data)
       : try Self.parseINI(String(decoding: data, as: UTF8.self))
     try Self.validate(imported)
+    _ = Self.migrate(&imported)
     preferences = imported
     try save()
     onChange?()
@@ -150,6 +147,7 @@ public final class SettingsStore {
     var group = "General"
     var recognized = false
     let native = content.contains("[Native]")
+    if !native { result.schemaVersion = 1 }
     for raw in content.components(separatedBy: .newlines) {
       let line = raw.trimmingCharacters(in: .whitespacesAndNewlines)
       if line.isEmpty || line.hasPrefix(";") || line.hasPrefix("#") { continue }
@@ -163,7 +161,10 @@ public final class SettingsStore {
       if value.hasPrefix("\""), value.hasSuffix("\"") {
         value = String(value.dropFirst().dropLast())
       }
-      if group == "General" {
+      if group == "Native", key == "schemaVersion" {
+        guard let version = Int(value), version > 0 else { throw SettingsError.invalid(key) }
+        result.schemaVersion = version
+      } else if group == "General" {
         if Preferences.defaults[key] != nil {
           // The Qt font-size option stored an 8-point display offset.
           if !native, key == "drawFontSize", let size = Int(value) { value = String(size + 8) }
@@ -195,7 +196,30 @@ public final class SettingsStore {
     }
     guard recognized else { throw SettingsError.invalid("empty file") }
     try validate(result)
+    _ = migrate(&result)
     return result
+  }
+  private static func migrate(_ preferences: inout Preferences) -> Bool {
+    let previousVersion = preferences.schemaVersion
+    if preferences.schemaVersion < 2 {
+      if !preferences.tools.contains(.share) { preferences.tools.append(.share) }
+      preferences.schemaVersion = 2
+    }
+    if preferences.schemaVersion < 3 {
+      for tool in [Tool.recognizeText, .recognizeQRCode] {
+        if !preferences.tools.contains(tool) { preferences.tools.append(tool) }
+        if let shortcut = Shortcut.defaults[tool.legacyName],
+          preferences.shortcuts.contains(where: {
+            $0.key != tool.legacyName && !preferences.unassignedShortcuts.contains($0.key)
+              && $0.value == shortcut
+          })
+        {
+          preferences.unassignedShortcuts.insert(tool.legacyName)
+        }
+      }
+      preferences.schemaVersion = 3
+    }
+    return preferences.schemaVersion != previousVersion
   }
   public static func validate(_ p: Preferences) throws {
     let ranges = [
