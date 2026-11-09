@@ -34,12 +34,15 @@ import UniformTypeIdentifiers
   #expect(CGImageDestinationFinalize(destination))
   board.clearContents()
   board.setData(output as Data, forType: NSPasteboard.PasteboardType(UTType.gif.identifier))
-  guard case .animated(let animation) = try #require(ClipboardPin.contents(of: board).first) else {
+  guard
+    case .animated(let animation, let type) = try #require(ClipboardPin.contents(of: board).first)
+  else {
     Issue.record("Animated GIF was not preserved")
     return
   }
   #expect(animation == output as Data)
-  let animatedPin = ContentPinController(content: .animated(animation))
+  #expect(type == .gif)
+  let animatedPin = ContentPinController(content: .animated(animation, .gif))
   let animatedView = try #require(animatedPin.window?.contentView as? NSImageView)
   #expect(animatedView.animates)
   #expect(

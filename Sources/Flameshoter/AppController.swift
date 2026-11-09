@@ -454,7 +454,7 @@ import UserNotifications
     for content in contents {
       switch content {
       case .image(let image): pin(image)
-      case .animated(let data): pin(.animated(data))
+      case .animated(let data, let type): pin(.animated(data, type))
       case .text(let text): pin(.text(text))
       case .color(let color, let original): pin(.color(color, original))
       case .file(let url): pin(.file(url))
@@ -559,7 +559,7 @@ import UserNotifications
     NSApp.orderFrontStandardAboutPanel(options: [
       .applicationName: "Flameshoter",
       .applicationVersion: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString")
-        as? String ?? "0.3.1",
+        as? String ?? "0.3.2",
       .version: localized(
         "Native Swift / AppKit · Based on Flameshot", "原生 Swift / AppKit · 基于 Flameshot"),
       .credits: NSAttributedString(

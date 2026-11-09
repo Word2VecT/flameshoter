@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import AppKit
+import FlameshoterCore
 import ImageIO
 import UniformTypeIdentifiers
 
@@ -7,7 +8,61 @@ enum ContentPin {
   case text(NSAttributedString)
   case color(ScreenColor, String)
   case file(URL)
-  case animated(Data)
+  case animated(Data, UTType)
+}
+
+@MainActor private final class WebPPlayback {
+  private let decoder: AnimatedWebP
+  private weak var view: NSImageView?
+  private var timer: Timer?
+  private var loops = 0
+  private var framesThisLoop = 0
+  private var running = false
+  init(decoder: AnimatedWebP, view: NSImageView) {
+    self.decoder = decoder
+    self.view = view
+  }
+  func start() {
+    guard !running else { return }
+    running = true
+    advance()
+  }
+  func stop() {
+    running = false
+    timer?.invalidate()
+    timer = nil
+    decoder.reset()
+    loops = 0
+    framesThisLoop = 0
+  }
+  private func advance() {
+    guard running, let view else { return }
+    if let frame = decoder.nextFrame() {
+      framesThisLoop += 1
+      view.image = NSImage(
+        cgImage: frame.image, size: NSSize(width: decoder.width, height: decoder.height))
+      let timer = Timer(timeInterval: frame.duration, repeats: false) { [weak self] _ in
+        Task { @MainActor in self?.advance() }
+      }
+      self.timer = timer
+      RunLoop.main.add(timer, forMode: .common)
+      return
+    }
+    guard framesThisLoop > 0 else {
+      running = false
+      timer = nil
+      return
+    }
+    loops += 1
+    guard decoder.loopCount == 0 || loops < decoder.loopCount else {
+      running = false
+      timer = nil
+      return
+    }
+    decoder.reset()
+    framesThisLoop = 0
+    advance()
+  }
 }
 
 @MainActor private final class AnimatedPinView: NSImageView {
@@ -31,6 +86,7 @@ enum ContentPin {
 @MainActor final class ContentPinController: NSWindowController, NSWindowDelegate {
   var onClose: ((ContentPinController) -> Void)?
   let content: ContentPin
+  private var webPPlayback: WebPPlayback?
 
   init(content: ContentPin) {
     self.content = content
@@ -95,18 +151,28 @@ enum ContentPin {
         ], vertical: false, spacing: 8)
       window.contentView = padded(stack([icon, name, actions], spacing: 10), inset: 16)
       window.setContentSize(NSSize(width: 350, height: 190))
-    case .animated(let data):
+    case .animated(let data, let type):
       window.title = localized("Pinned animation", "置顶动图")
       let view = AnimatedPinView()
       view.controller = self
-      view.image = NSImage(data: data)
       view.imageScaling = .scaleProportionallyUpOrDown
-      view.animates = true
       window.contentView = view
-      if let source = CGImageSourceCreateWithData(data as CFData, nil),
-        let first = CGImageSourceCreateImageAtIndex(source, 0, nil)
-      {
-        let natural = NSSize(width: first.width, height: first.height)
+      let natural: NSSize?
+      if type == .webP, let decoder = AnimatedWebP(data: data) {
+        webPPlayback = WebPPlayback(decoder: decoder, view: view)
+        natural = NSSize(width: decoder.width, height: decoder.height)
+      } else {
+        view.image = NSImage(data: data)
+        view.animates = true
+        if let source = CGImageSourceCreateWithData(data as CFData, nil),
+          let first = CGImageSourceCreateImageAtIndex(source, 0, nil)
+        {
+          natural = NSSize(width: first.width, height: first.height)
+        } else {
+          natural = nil
+        }
+      }
+      if let natural {
         let scale = min(1, 600 / natural.width, 500 / natural.height)
         window.minSize = NSSize(width: 40, height: 40)
         window.contentAspectRatio = natural
@@ -120,23 +186,27 @@ enum ContentPin {
     showWindow(nil)
     window?.makeKeyAndOrderFront(nil)
     NSApp.activate()
+    webPPlayback?.start()
   }
   @objc func copyAnimation(_ sender: Any?) {
-    guard case .animated(let data) = content else { return }
+    guard case .animated(let data, let type) = content else { return }
     NSPasteboard.general.clearContents()
-    NSPasteboard.general.setData(data, forType: NSPasteboard.PasteboardType(UTType.gif.identifier))
+    NSPasteboard.general.setData(data, forType: NSPasteboard.PasteboardType(type.identifier))
   }
   @objc func saveAnimation(_ sender: Any?) {
-    guard case .animated(let data) = content else { return }
+    guard case .animated(let data, let type) = content else { return }
     let panel = NSSavePanel()
     panel.title = localized("Save animation", "保存动图")
-    panel.allowedContentTypes = [.gif]
-    panel.nameFieldStringValue = "Flameshoter.gif"
+    panel.allowedContentTypes = [type]
+    panel.nameFieldStringValue = "Flameshoter." + (type.preferredFilenameExtension ?? "gif")
     guard panel.runModal() == .OK, let url = panel.url else { return }
     do { try data.write(to: url, options: .atomic) } catch {
       warning(localized("Save failed", "保存失败"), errorMessage(error), window: window)
     }
   }
   @objc func closePin(_ sender: Any?) { window?.close() }
-  func windowWillClose(_ notification: Notification) { onClose?(self) }
+  func windowWillClose(_ notification: Notification) {
+    webPPlayback?.stop()
+    onClose?(self)
+  }
 }

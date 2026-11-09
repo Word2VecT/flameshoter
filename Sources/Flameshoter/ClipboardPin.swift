@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import AppKit
+import FlameshoterCore
 import ImageIO
 import UniformTypeIdentifiers
 
 enum ClipboardPinContent {
   case image(CGImage)
-  case animated(Data)
+  case animated(Data, UTType)
   case text(NSAttributedString)
   case color(ScreenColor, String)
   case file(URL)
@@ -17,11 +18,16 @@ enum ClipboardPinContent {
     let files = (board.readObjects(forClasses: [NSURL.self], options: options) as? [URL]) ?? []
     if !files.isEmpty {
       return files.map { url in
+        if url.pathExtension.lowercased() == "webp", let data = try? Data(contentsOf: url),
+          let animation = AnimatedWebP(data: data), animation.frameCount > 1
+        {
+          return .animated(data, .webP)
+        }
         if let source = CGImageSourceCreateWithURL(url as CFURL, nil) {
           if CGImageSourceGetType(source) as String? == UTType.gif.identifier,
             CGImageSourceGetCount(source) > 1, let data = try? Data(contentsOf: url)
           {
-            return .animated(data)
+            return .animated(data, .gif)
           }
           if CGImageSourceGetCount(source) == 1,
             let image = CGImageSourceCreateImageAtIndex(source, 0, nil)
@@ -37,7 +43,13 @@ enum ClipboardPinContent {
       let source = CGImageSourceCreateWithData(data as CFData, nil),
       CGImageSourceGetCount(source) > 1
     {
-      return [.animated(data)]
+      return [.animated(data, .gif)]
+    }
+    let webPType = NSPasteboard.PasteboardType(UTType.webP.identifier)
+    if let data = board.data(forType: webPType),
+      let animation = AnimatedWebP(data: data), animation.frameCount > 1
+    {
+      return [.animated(data, .webP)]
     }
     for type in [
       NSPasteboard.PasteboardType.png, .tiff, gifType,
