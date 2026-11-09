@@ -2,7 +2,7 @@
 import AppKit
 
 public struct Preferences: Codable, Equatable, Sendable {
-  public var schemaVersion = 4
+  public var schemaVersion = 5
   public var values: [String: String] = [:]
   public var shortcuts = Shortcut.defaults
   public var unassignedShortcuts: Set<String> = []
@@ -15,7 +15,7 @@ public struct Preferences: Codable, Equatable, Sendable {
     "allowMultipleGuiInstances": "false", "showDesktopNotification": "false",
     "showAbortNotification": "false", "showHelp": "true", "showQuitPrompt": "true",
     "saveLastRegion": "true", "copyOnDoubleClick": "false", "showMagnifier": "false",
-    "autoSelectionMode": "2", "screenColorFormat": "0",
+    "autoSelectionMode": "2", "screenColorFormat": "0", "longCaptureAutoTrim": "false",
     "squareMagnifier": "false", "showSidePanelButton": "true", "useNativeFullscreen": "false",
     "showSelectionGeometry": "4", "showSelectionGeometryHideTime": "3000", "undoLimit": "100",
     "antialiasingPinZoom": "true", "useSystemAccentColor": "true", "uiColor": "#007aff",
@@ -228,6 +228,16 @@ public final class SettingsStore {
         preferences.unassignedShortcuts.insert(name)
       }
       preferences.schemaVersion = 4
+    }
+    if preferences.schemaVersion < 5 {
+      let tool = Tool.longCapture
+      if !preferences.tools.contains(tool) { preferences.tools.append(tool) }
+      if let shortcut = Shortcut.defaults[tool.legacyName], preferences.shortcuts.contains(where: {
+        $0.key != tool.legacyName && !preferences.unassignedShortcuts.contains($0.key) && $0.value == shortcut
+      }) {
+        preferences.unassignedShortcuts.insert(tool.legacyName)
+      }
+      preferences.schemaVersion = 5
     }
     return preferences.schemaVersion != previousVersion
   }

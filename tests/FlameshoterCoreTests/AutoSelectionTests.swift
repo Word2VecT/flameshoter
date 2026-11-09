@@ -93,3 +93,20 @@ import Testing
   #expect(canvas.document.selection == region)
   #expect(settled == 3)
 }
+
+@Test @MainActor func captureSourceComesFromTheOriginalWindowSnapshot() throws {
+  _ = NSApplication.shared
+  let screen = try #require(NSScreen.main)
+  let image = try #require(CGContext(
+    data: nil, width: 640, height: 480, bitsPerComponent: 8, bytesPerRow: 0,
+    space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+  )?.makeImage())
+  var frame = CapturedScreen(image: image, screen: screen)
+  let region = CGRect(x: 100, y: 100, width: 300, height: 200)
+  frame.windows = [SelectionWindow(
+    processID: ProcessInfo.processInfo.processIdentifier, globalFrame: region, localFrame: region)]
+  let canvas = CanvasView(frame: frame)
+  #expect(canvas.sourceApplication(at: CGPoint(x: 150, y: 150))?.processIdentifier
+    == ProcessInfo.processInfo.processIdentifier)
+  #expect(canvas.sourceApplication(at: .zero) == nil)
+}

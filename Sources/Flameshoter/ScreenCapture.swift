@@ -77,8 +77,10 @@ import ScreenCaptureKit
         let local = NSRectFromString(region)
         if !local.isEmpty {
           let global = local.offsetBy(dx: frame.displayFrame.minX, dy: frame.displayFrame.minY)
+          let processID = ProcessInfo.processInfo.environment["FLAMESHOTER_TEST_WINDOW_PID"].flatMap(pid_t.init)
+            ?? ProcessInfo.processInfo.processIdentifier
           frame.windows = [SelectionWindow(
-            processID: ProcessInfo.processInfo.processIdentifier,
+            processID: processID,
             globalFrame: global, localFrame: local)]
         }
       }

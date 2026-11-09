@@ -66,10 +66,11 @@ public enum Tool: Int, Codable, CaseIterable, Identifiable, Sendable {
   case share = 25
   case recognizeText = 26
   case recognizeQRCode = 27
+  case longCapture = 28
   // Preserve Flameshot's getIterableButtonTypes() order, adding native Share after Save.
   public static let toolbarOrder: [Tool] = [
     .pencil, .line, .arrow, .select, .rectangle, .ellipse, .marker, .text,
-    .counter, .pixelate, .invert, .moveSelection, .undo, .redo, .recognizeText, .recognizeQRCode,
+    .counter, .pixelate, .invert, .moveSelection, .undo, .redo, .longCapture, .recognizeText, .recognizeQRCode,
     .copy, .save, .share,
     .exit, .pin, .sizeIncrease, .sizeDecrease, .accept,
   ]
@@ -97,6 +98,7 @@ public enum Tool: Int, Codable, CaseIterable, Identifiable, Sendable {
     case .share: return ("Share", "分享")
     case .recognizeText: return ("Recognize text", "文字识别")
     case .recognizeQRCode: return ("Recognize QR code", "识别二维码")
+    case .longCapture: return ("Scrolling capture", "长截图")
     case .exit: return ("Cancel capture", "取消截图")
     case .openWith: return ("Open with…", "使用其他应用打开…")
     case .pixelate: return ("Redact / pixelate", "遮挡 / 马赛克")
@@ -130,6 +132,7 @@ public enum Tool: Int, Codable, CaseIterable, Identifiable, Sendable {
     case .share: return "square.and.arrow.up"
     case .recognizeText: return "text.viewfinder"
     case .recognizeQRCode: return "qrcode.viewfinder"
+    case .longCapture: return "scroll"
     case .pixelate: return "square.dashed.inset.filled"
     case .pin: return "pin"
     case .text: return "textformat"
@@ -150,6 +153,7 @@ public enum Tool: Int, Codable, CaseIterable, Identifiable, Sendable {
       .counter: "CIRCLECOUNT", .sizeIncrease: "SIZEINCREASE", .sizeDecrease: "SIZEDECREASE",
       .invert: "INVERT", .accept: "ACCEPT", .clearSelection: "CANCEL", .share: "SHARE",
       .recognizeText: "RECOGNIZE_TEXT", .recognizeQRCode: "RECOGNIZE_QR_CODE",
+      .longCapture: "LONG_CAPTURE",
     ]
     return "TYPE_" + names[self]!
   }

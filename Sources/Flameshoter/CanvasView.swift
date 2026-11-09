@@ -380,6 +380,11 @@ import FlameshoterCore
     guard let window, document.selection == nil else { return }
     updateAutomaticSelection(at: convert(window.mouseLocationOutsideOfEventStream, from: nil))
   }
+  func sourceApplication(at point: CGPoint) -> NSRunningApplication? {
+    AutoSelection.window(at: point, in: automaticWindows).flatMap {
+      NSRunningApplication(processIdentifier: $0.processID)
+    }
+  }
   private func updateAutomaticSelection(at point: CGPoint) {
     guard document.selection == nil, operation == nil, automaticMode > 0,
       let window = AutoSelection.window(at: point, in: automaticWindows)

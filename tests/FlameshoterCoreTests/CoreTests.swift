@@ -155,8 +155,8 @@ private func pixels(_ image: CGImage) -> [UInt8] {
   try JSONEncoder().encode(old).write(to: url)
   let upgraded = SettingsStore(url: url)
   #expect(upgraded.loadError == nil)
-  #expect(upgraded.preferences.schemaVersion == 4)
-  #expect(upgraded.preferences.tools == [.pencil, .copy, .share, .recognizeText, .recognizeQRCode])
+  #expect(upgraded.preferences.schemaVersion == 5)
+  #expect(upgraded.preferences.tools == [.pencil, .copy, .share, .recognizeText, .recognizeQRCode, .longCapture])
   #expect(upgraded.preferences.values == old.values)
   #expect(upgraded.preferences.shortcuts == old.shortcuts)
   upgraded.update {
@@ -185,13 +185,32 @@ private func pixels(_ image: CGImage) -> [UInt8] {
   old.shortcuts["TYPE_COPY"] = Shortcut(8, [.shift])
   try JSONEncoder().encode(old).write(to: url)
   let upgraded = SettingsStore(url: url)
-  #expect(upgraded.preferences.tools == [.copy, .recognizeText, .recognizeQRCode])
+  #expect(upgraded.preferences.tools == [.copy, .recognizeText, .recognizeQRCode, .longCapture])
   #expect(upgraded.preferences.shortcut(Tool.recognizeText.legacyName) == nil)
   #expect(upgraded.preferences.shortcut(Tool.recognizeQRCode.legacyName) == Shortcut(12))
   upgraded.update { $0.tools.removeAll { $0 == .recognizeQRCode } }
   let reopened = SettingsStore(url: url)
   #expect(!reopened.preferences.tools.contains(.recognizeQRCode))
   #expect(reopened.preferences.shortcut("TYPE_COPY") == Shortcut(8, [.shift]))
+}
+
+@Test func scrollingCaptureUpgradeKeepsExistingShortcutAssignments() throws {
+  let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+  try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+  defer { try? FileManager.default.removeItem(at: root) }
+  let url = root.appendingPathComponent("settings.json")
+  var old = Preferences()
+  old.schemaVersion = 4
+  old.tools = [.copy]
+  old.shortcuts.removeValue(forKey: Tool.longCapture.legacyName)
+  old.shortcuts["TYPE_PENCIL"] = Shortcut(37)
+  try JSONEncoder().encode(old).write(to: url)
+  let upgraded = SettingsStore(url: url)
+  #expect(upgraded.preferences.tools == [.copy, .longCapture])
+  #expect(upgraded.preferences.shortcut("TYPE_PENCIL") == Shortcut(37))
+  #expect(upgraded.preferences.shortcut(Tool.longCapture.legacyName) == nil)
+  upgraded.update { $0.tools.removeAll { $0 == .longCapture } }
+  #expect(!SettingsStore(url: url).preferences.tools.contains(.longCapture))
 }
 
 @Test func existingSettingsGainTheShareShortcutWithoutReplacingOverrides() {

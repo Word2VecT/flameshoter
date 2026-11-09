@@ -23,6 +23,7 @@
 ## Features
 
 - Region capture, multiple displays, delayed captures and automatic window selection; Accessibility access enables interface-element detection.
+- Vertical and horizontal scrolling captures with preview, cropping, copying, saving and pinning.
 - In-app annotation: pencil, lines, arrows, shapes, text, numbers and redaction.
 - Copy, save, pin and share through the macOS share sheet.
 - Recognize text and QR codes offline in captures and pinned images; select text directly in images.
@@ -59,6 +60,7 @@ These are the defaults. Shortcuts can be changed in Settings.
 | ⌘Z / ⌘⇧Z | Undo / redo |
 | ⌘P | Pin capture |
 | ⇧C / Q | Recognize text / QR code |
+| L | Scrolling capture |
 | ⌥C | Copy the color under the pointer; hold ⌥ and press ⇧ to change formats |
 | Space / right-click | Tool settings |
 | Esc | Cancel capture |

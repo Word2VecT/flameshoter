@@ -40,6 +40,7 @@ import FlameshoterCore
   weak var app: AppController?
   private var closing = false
   private var sharing: CaptureSharing?
+  private var longCapture: LongCaptureSession?
   private var exporting = false
   init(frames: [CapturedScreen], command: NativeCommand, app: AppController) {
     self.command = command
@@ -181,6 +182,8 @@ import FlameshoterCore
     closing = true
     sharing?.close()
     sharing = nil
+    longCapture?.invalidate()
+    longCapture = nil
     if Environment.shared.preferences.bool("saveLastRegion"),
       let r = active.canvas.document.selection
     {
@@ -279,6 +282,38 @@ import FlameshoterCore
       return
     }
     guard canvas.document.selection != nil else { return }
+    if tool == .longCapture {
+      guard !command.copy, !command.raw, command.path == nil, !command.pin, !command.geometry else { return }
+      if !canvas.document.annotations.isEmpty, Environment.shared.preferences.bool("showQuitPrompt") {
+        hide()
+        if !confirmDiscard() { show(); return }
+      }
+      let selection = canvas.document.selection!
+      let source = canvas.sourceApplication(at: CGPoint(x: selection.midX, y: selection.midY))
+      hide()
+      let controller = LongCaptureSession(screen: active.screen, selection: selection, source: source)
+      longCapture = controller
+      controller.onFinish = { [weak self] result in
+        guard let self else { return }
+        self.longCapture = nil
+        switch result {
+        case .cancel: self.close(cancelled: true); return
+        case .copy(let image): self.app?.respond(self.command, image: image)
+        case .save(let image, let url):
+          self.app?.notifySaved(url)
+          self.app?.respond(self.command, image: image)
+        case .pin(let image):
+          self.app?.pin(image, screen: self.active.screen)
+          self.app?.respond(self.command, image: image)
+        case .text(let image):
+          self.app?.recognize(image, kind: .text)
+          self.app?.respond(self.command, image: image)
+        }
+        self.close()
+      }
+      controller.show()
+      return
+    }
     do {
       let image = try canvas.rendered()
       let selection = canvas.document.pixelSelection
