@@ -34,6 +34,7 @@ import UserNotifications
       Task { @MainActor [weak self] in self?.showPinArchiveError(error) }
     })
   private var recognitionWindows: [RecognitionWindowController] = []
+  private var translationWindows: [TranslationWindowController] = []
   private var observers: [NSObjectProtocol] = []
   private var commandObserver: NSObjectProtocol?
   private let hotkey = GlobalHotkey()
@@ -508,6 +509,7 @@ import UserNotifications
     }
     controller.onChange = { [weak self] pin in self?.schedulePinUpdate(pin) }
     controller.onRecognize = { [weak self] image, kind in self?.recognize(image, kind: kind) }
+    controller.onTranslate = { [weak self] image in self?.translate(image) }
   }
   private func pin(_ content: ContentPin) {
     let controller = ContentPinController(content: content)
@@ -718,6 +720,15 @@ import UserNotifications
     recognitionWindows.append(controller)
     controller.show()
   }
+  func translate(_ image: CGImage) {
+    standaloneCapture = false
+    let controller = TranslationWindowController(image: image)
+    controller.onClose = { [weak self] closed in
+      self?.translationWindows.removeAll { $0 === closed }
+    }
+    translationWindows.append(controller)
+    controller.show()
+  }
   func respond(
     _ command: NativeCommand, image: CGImage? = nil, selection: CGRect? = nil, error: String? = nil
   ) {
@@ -794,7 +805,7 @@ import UserNotifications
     NSApp.orderFrontStandardAboutPanel(options: [
       .applicationName: "Flameshoter",
       .applicationVersion: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString")
-        as? String ?? "0.3.7",
+        as? String ?? "0.3.8",
       .version: localized(
         "Native Swift / AppKit · Based on Flameshot", "原生 Swift / AppKit · 基于 Flameshot"),
       .credits: NSAttributedString(

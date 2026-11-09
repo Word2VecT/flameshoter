@@ -41,9 +41,28 @@ private func qrFixture(_ payload: String) -> CGImage {
   let analysis = try await ImageRecognition.text(textFixture())
   #expect(analysis.transcript.contains("Flameshoter 123"))
   #expect(analysis.transcript.contains("截图测试"))
+  let lines = try await ImageRecognition.lines(textFixture())
+  #expect(lines.contains(where: { $0.text.contains("Flameshoter 123") }))
+  #expect(lines.contains(where: { $0.text.contains("截图测试") }))
+  #expect(lines.allSatisfy { CGRect(x: 0, y: 0, width: 1, height: 1).contains($0.bounds) })
   #expect(try await ImageRecognition.qrCodes(qrFixture("https://example.com/pixpin"))
     == ["https://example.com/pixpin"])
   #expect(try await ImageRecognition.qrCodes(textFixture()).isEmpty)
+}
+
+@Test @MainActor func recognitionCanUseAnExplicitJapaneseSourceLanguage() async throws {
+  _ = NSApplication.shared
+  let image = NSImage(size: NSSize(width: 700, height: 180))
+  image.lockFocus()
+  NSColor.white.setFill()
+  NSRect(x: 0, y: 0, width: 700, height: 180).fill()
+  ("日本語の翻訳テスト" as NSString).draw(at: NSPoint(x: 40, y: 60), withAttributes: [
+    .font: NSFont.systemFont(ofSize: 48), .foregroundColor: NSColor.black,
+  ])
+  image.unlockFocus()
+  let cgImage = try #require(image.cgImage(forProposedRect: nil, context: nil, hints: nil))
+  let lines = try await ImageRecognition.lines(cgImage, language: "ja")
+  #expect(lines.map(\.text).joined().contains("日本語"))
 }
 
 @Test @MainActor func pinnedTextIsInteractiveAndBlankImageSpaceStillDrags() async throws {

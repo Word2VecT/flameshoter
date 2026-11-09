@@ -70,8 +70,8 @@ import FlameshoterCore
     inspectorButton.invoke = { [weak self] in self?.toggleInspector() }
     let outputRequested = command.copy || command.raw || command.path != nil || command.pin
     var excluded: [Tool] = outputRequested
-      ? [.copy, .save, .share, .openWith, .pin, .recognizeText, .recognizeQRCode, .longCapture, .screenRecording] : [.accept]
-    if command.geometry { excluded += [.recognizeText, .recognizeQRCode, .longCapture, .screenRecording] }
+      ? [.copy, .save, .share, .openWith, .pin, .recognizeText, .recognizeQRCode, .translate, .longCapture, .screenRecording] : [.accept]
+    if command.geometry { excluded += [.recognizeText, .recognizeQRCode, .translate, .longCapture, .screenRecording] }
     for tool in Tool.toolbarOrder where prefs.tools.contains(tool) && !excluded.contains(tool) {
       let button = makeButton(tool)
       root.controls.append(button)

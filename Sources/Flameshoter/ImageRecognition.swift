@@ -7,7 +7,37 @@ enum RecognitionKind {
   case text, qrCode
 }
 
+struct RecognizedTextLine: Equatable, Sendable {
+  let text: String
+  // Vision's normalized image coordinates have their origin at the lower left.
+  let bounds: CGRect
+}
+
 enum ImageRecognition {
+  static func lines(_ image: CGImage, language: String? = nil) async throws -> [RecognizedTextLine] {
+    try await Task.detached(priority: .userInitiated) {
+      let request = VNRecognizeTextRequest()
+      request.recognitionLevel = .accurate
+      request.usesLanguageCorrection = true
+      let supported = try request.supportedRecognitionLanguages()
+      let requested = language.map { [$0, "en-US"] }
+        ?? Array(Locale.preferredLanguages.prefix(2)) + ["zh-Hans", "en-US"]
+      var chosen: [String] = []
+      for raw in requested {
+        let identifier = raw == "zh-TW" || raw == "zh-HK" ? "zh-Hant" : raw
+        let match = supported.first { $0.caseInsensitiveCompare(identifier) == .orderedSame }
+          ?? supported.first { $0.split(separator: "-").first == identifier.split(separator: "-").first }
+        if let match, !chosen.contains(match) { chosen.append(match) }
+      }
+      if !chosen.isEmpty { request.recognitionLanguages = chosen }
+      try VNImageRequestHandler(cgImage: image, orientation: .up).perform([request])
+      return (request.results ?? []).compactMap { observation in
+        observation.topCandidates(1).first.map {
+          RecognizedTextLine(text: $0.string, bounds: observation.boundingBox)
+        }
+      }
+    }.value
+  }
   static func text(_ image: CGImage) async throws -> ImageAnalysis {
     let supported = ImageAnalyzer.supportedTextRecognitionLanguages
     let preferred = Locale.preferredLanguages.compactMap { language in

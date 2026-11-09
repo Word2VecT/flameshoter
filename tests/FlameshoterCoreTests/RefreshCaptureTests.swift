@@ -106,7 +106,7 @@ import Testing
   old.shortcuts["TYPE_PENCIL"] = Shortcut(96)
   try JSONEncoder().encode(old).write(to: url)
   let updated = SettingsStore(url: url).preferences
-  #expect(updated.tools == [.copy, .refreshCapture])
+  #expect(updated.tools == [.copy, .refreshCapture, .translate])
   #expect(updated.shortcut("TYPE_PENCIL") == Shortcut(96))
   #expect(updated.shortcut(Tool.refreshCapture.legacyName) == nil)
 }

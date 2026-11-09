@@ -49,6 +49,10 @@ import VisionKit
       controller?.recognizeQRCode(nil)
       return
     }
+    if Environment.shared.preferences.shortcut(Tool.translate.legacyName)?.matches(event) == true {
+      controller?.translateImage(nil)
+      return
+    }
     if event.modifierFlags.contains(.command), event.keyCode == 8 {
       controller?.copyImage(nil)
       return
@@ -71,6 +75,7 @@ import VisionKit
       (localized("Open with…", "使用其他应用打开…"), #selector(PinWindowController.openImage(_:))),
       (localized("Recognize text…", "识别文字…"), #selector(PinWindowController.recognizeText(_:))),
       (localized("Recognize QR code…", "识别二维码…"), #selector(PinWindowController.recognizeQRCode(_:))),
+      (localized("Translate…", "翻译…"), #selector(PinWindowController.translateImage(_:))),
       (localized("Actual size", "实际大小"), #selector(PinWindowController.actualSize(_:))),
       (localized("Close", "关闭"), #selector(PinWindowController.closeImage(_:))),
     ] {
@@ -91,6 +96,7 @@ import VisionKit
   var onClose: ((PinWindowController) -> Void)?
   var onChange: ((PinWindowController) -> Void)?
   var onRecognize: ((CGImage, RecognitionKind) -> Void)?
+  var onTranslate: ((CGImage) -> Void)?
   private let textOverlay = ImageAnalysisOverlayView()
   private var analysisStarted = false
   private var analysisTask: Task<Void, Never>?
@@ -193,6 +199,7 @@ import VisionKit
   @objc func actualSize(_ sender: Any?) { window?.setContentSize(naturalSize) }
   @objc func recognizeText(_ sender: Any?) { onRecognize?(image, .text) }
   @objc func recognizeQRCode(_ sender: Any?) { onRecognize?(image, .qrCode) }
+  @objc func translateImage(_ sender: Any?) { onTranslate?(image) }
   @objc func closeImage(_ sender: Any?) { window?.close() }
   func windowDidMove(_ notification: Notification) { onChange?(self) }
   func windowDidResize(_ notification: Notification) { onChange?(self) }

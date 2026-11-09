@@ -588,6 +588,10 @@ import FlameshoterCore
         }
         hide()
         app?.recognize(image, kind: tool == .recognizeText ? .text : .qrCode)
+      case .translate:
+        guard !command.copy, !command.raw, command.path == nil, !command.pin, !command.geometry else { return }
+        hide()
+        app?.translate(image)
       case .share:
         share(image)
         return

@@ -92,6 +92,7 @@ public struct Shortcut: Codable, Equatable, Sendable {
       "TYPE_RECOGNIZE_TEXT": "Shift+C", "TYPE_RECOGNIZE_QR_CODE": "Q",
       "TYPE_LONG_CAPTURE": "L", "TYPE_SCREEN_RECORDING": "G",
       "TYPE_REFRESH_CAPTURE": "F5",
+      "TYPE_TRANSLATE": "Alt+Q",
       "TYPE_OPEN_APP": "Ctrl+O", "TYPE_EXIT": "Escape",
       "TYPE_ACCEPT": "Return", "TYPE_CANCEL": "Ctrl+Backspace", "TYPE_TOGGLE_PANEL": "Space",
       "TYPE_SELECT_ALL": "Ctrl+A", "TYPE_COMMIT_CURRENT_TOOL": "Ctrl+Return",
