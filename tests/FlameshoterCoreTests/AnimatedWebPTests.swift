@@ -76,6 +76,30 @@ func animatedWebPFixture() throws -> Data {
   #expect(try #require(decoder.nextFrame()).image.colorSpace?.copyICCData() as Data? == profile)
 }
 
+@Test func animatedWebPEncoderPreservesFramesTimingAndColorProfile() throws {
+  let space = try #require(CGColorSpace(name: CGColorSpace.displayP3))
+  func frame(_ red: CGFloat, _ blue: CGFloat) throws -> CGImage {
+    let context = try #require(
+      CGContext(
+        data: nil, width: 16, height: 16, bitsPerComponent: 8, bytesPerRow: 64,
+        space: space, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
+    context.setFillColor(CGColor(colorSpace: space, components: [red, 0, blue, 1])!)
+    context.fill(CGRect(x: 0, y: 0, width: 16, height: 16))
+    return try #require(context.makeImage())
+  }
+  let encoder = try AnimatedWebPEncoder(width: 16, height: 16)
+  try encoder.add(frame(1, 0), at: 0)
+  try encoder.add(frame(0, 1), at: 400)
+  let decoder = try #require(AnimatedWebP(data: encoder.data(duration: 1000)))
+  let first = try #require(decoder.nextFrame())
+  let second = try #require(decoder.nextFrame())
+  #expect(first.duration == 0.4 && second.duration == 0.6)
+  #expect(first.image.colorSpace?.copyICCData() == space.copyICCData())
+  #expect(second.image.colorSpace?.copyICCData() == space.copyICCData())
+  #expect(ScreenColor.sample(first.image, point: CGPoint(x: 8, y: 8), scale: 1)?.red == 255)
+  #expect(ScreenColor.sample(second.image, point: CGPoint(x: 8, y: 8), scale: 1)?.blue == 255)
+}
+
 @Test @MainActor func animatedWebPPinsRetainTheOriginalData() async throws {
   _ = NSApplication.shared
   let data = try animatedWebPFixture()
@@ -88,10 +112,10 @@ func animatedWebPFixture() throws -> Data {
     return
   }
   #expect(bytes == data && type == .webP)
-  let controller = ContentPinController(content: .animated(bytes, type))
-  controller.show()
-  defer { controller.window?.close() }
-  let view = try #require(controller.window?.contentView as? NSImageView)
+  let view = NSImageView()
+  let playback = WebPPlayback(decoder: try #require(AnimatedWebP(data: bytes)), view: view)
+  playback.start()
+  defer { playback.stop() }
   let first = try #require(view.image?.cgImage(forProposedRect: nil, context: nil, hints: nil))
   #expect(
     ScreenColor.sample(first, point: CGPoint(x: 8, y: 8), scale: 1)?.string(.hashHex) == "#ff0000")

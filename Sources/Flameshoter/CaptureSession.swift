@@ -41,6 +41,8 @@ import FlameshoterCore
   private var closing = false
   private var sharing: CaptureSharing?
   private var longCapture: LongCaptureSession?
+  private var recording: ScreenRecordingSession?
+  var hasUnsavedRecording: Bool { recording?.hasUnsavedRecording ?? false }
   private var exporting = false
   init(frames: [CapturedScreen], command: NativeCommand, app: AppController) {
     self.command = command
@@ -115,6 +117,7 @@ import FlameshoterCore
     }
   }
   func show() {
+    guard longCapture == nil && recording == nil else { return }
     NSApp.activate()
     for (index, surface) in surfaces.enumerated() {
       surface.window.orderFrontRegardless()
@@ -184,6 +187,8 @@ import FlameshoterCore
     sharing = nil
     longCapture?.invalidate()
     longCapture = nil
+    recording?.invalidate()
+    recording = nil
     if Environment.shared.preferences.bool("saveLastRegion"),
       let r = active.canvas.document.selection
     {
@@ -282,6 +287,25 @@ import FlameshoterCore
       return
     }
     guard canvas.document.selection != nil else { return }
+    if tool == .screenRecording {
+      guard !command.copy, !command.raw, command.path == nil, !command.pin, !command.geometry else { return }
+      if !canvas.document.annotations.isEmpty, Environment.shared.preferences.bool("showQuitPrompt") {
+        hide()
+        if !confirmDiscard() { show(); return }
+      }
+      let selection = canvas.document.selection!
+      hide()
+      let controller = ScreenRecordingSession(screen: active.screen, selection: selection)
+      recording = controller
+      controller.onFinish = { [weak self] saved in
+        guard let self else { return }
+        self.recording = nil
+        self.app?.respond(self.command, error: saved ? nil : localized("Recording cancelled", "录屏已取消"))
+        self.close()
+      }
+      controller.show()
+      return
+    }
     if tool == .longCapture {
       guard !command.copy, !command.raw, command.path == nil, !command.pin, !command.geometry else { return }
       if !canvas.document.annotations.isEmpty, Environment.shared.preferences.bool("showQuitPrompt") {

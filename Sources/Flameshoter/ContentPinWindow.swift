@@ -11,7 +11,7 @@ enum ContentPin {
   case animated(Data, UTType)
 }
 
-@MainActor private final class WebPPlayback {
+@MainActor final class WebPPlayback {
   private let decoder: AnimatedWebP
   private weak var view: NSImageView?
   private var timer: Timer?

@@ -44,7 +44,10 @@ def sign(app, identity, keychain=None, hardened_runtime=False):
         run('/usr/bin/codesign', *flags, path, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     for framework in sorted(app.rglob('*.framework'), key=lambda p: len(p.parts), reverse=True):
         run('/usr/bin/codesign', *flags, framework, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    run('/usr/bin/codesign', *flags, app)
+    app_flags = list(flags)
+    if hardened_runtime:
+        app_flags += ['--entitlements', Path(__file__).resolve().parents[1] / 'packaging/macos/Flameshoter.entitlements']
+    run('/usr/bin/codesign', *app_flags, app)
     run('/usr/bin/codesign', '--verify', '--deep', '--strict', app)
 
 
@@ -108,7 +111,8 @@ def main():
             'LSMinimumSystemVersion': '26.0', 'LSUIElement': True,
             'NSPrincipalClass': 'NSApplication', 'NSHighResolutionCapable': True,
             'LSApplicationCategoryType': 'public.app-category.productivity',
-            'NSScreenCaptureUsageDescription': 'Flameshoter captures your screen so you can select and annotate screenshots.',
+            'NSScreenCaptureUsageDescription': 'Flameshoter captures your screen to create screenshots or screen recordings.',
+            'NSMicrophoneUsageDescription': 'Flameshoter records microphone audio only when you enable it for a screen recording.',
             'NSHumanReadableCopyright': 'GPL-3.0-or-later. Based on Flameshot by Alejandro Sirgo Rica and contributors.',
             'FlameshoterRevision': revision,
         }

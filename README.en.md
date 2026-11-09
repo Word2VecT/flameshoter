@@ -24,6 +24,7 @@
 
 - Region capture, multiple displays, delayed captures and automatic window selection; Accessibility access enables interface-element detection.
 - Vertical and horizontal scrolling captures with preview, cropping, copying, saving and pinning.
+- Record a region with frame rate, delay, audio, pause, preview and trimming; save as MP4, GIF or animated WebP.
 - In-app annotation: pencil, lines, arrows, shapes, text, numbers and redaction.
 - Copy, save, pin and share through the macOS share sheet.
 - Pin clipboard images, GIF and animated WebP, text, colors and files; restore pins closed during the current session.
@@ -63,6 +64,7 @@ These are the defaults. Shortcuts can be changed in Settings.
 | ⌃⇧2 / ⌃⇧3 | Pin clipboard / restore the last closed pin |
 | ⇧C / Q | Recognize text / QR code |
 | L | Scrolling capture |
+| G | Record screen |
 | ⌥C | Copy the color under the pointer; hold ⌥ and press ⇧ to change formats |
 | Space / right-click | Tool settings |
 | Esc | Cancel capture |

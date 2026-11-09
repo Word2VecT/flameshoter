@@ -1,4 +1,6 @@
-# Flameshoter 0.3.2
+# Flameshoter 0.3.3
+
+Record a selected region with configurable frame rate, delay, system audio and microphone. Pause and resume, preview and trim using native macOS controls, and export to MP4, GIF or lossless animated WebP. GIF and WebP do not include audio.
 
 Pin clipboard images, GIF and animated WebP, text, colors and files. Restore pins closed during the current session.
 

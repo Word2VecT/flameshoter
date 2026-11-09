@@ -1,2 +1,3 @@
 "CFBundleDisplayName" = "Flameshoter";
-"NSScreenCaptureUsageDescription" = "Flameshoter captures your screen so you can select and annotate screenshots.";
+"NSScreenCaptureUsageDescription" = "Flameshoter captures your screen to create screenshots or screen recordings.";
+"NSMicrophoneUsageDescription" = "Flameshoter records microphone audio only when you enable it for a screen recording.";

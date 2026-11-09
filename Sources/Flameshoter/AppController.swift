@@ -101,6 +101,7 @@ import UserNotifications
     return false
   }
   func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+    if recordingPreventsExit() { return .terminateCancel }
     if !preparingRestart
       && sessions.contains(where: { !$0.active.canvas.document.annotations.isEmpty }),
       Environment.shared.preferences.bool("showQuitPrompt")
@@ -120,6 +121,7 @@ import UserNotifications
     for observer in observers { NotificationCenter.default.removeObserver(observer) }
   }
   func prepareForRestart() -> Bool {
+    if recordingPreventsExit() { return false }
     if sessions.contains(where: { !$0.active.canvas.document.annotations.isEmpty }),
       Environment.shared.preferences.bool("showQuitPrompt")
     {
@@ -131,6 +133,13 @@ import UserNotifications
     }
     preparingRestart = true
     for session in Array(sessions) { session.close(cancelled: true) }
+    return true
+  }
+  private func recordingPreventsExit() -> Bool {
+    guard sessions.contains(where: { $0.hasUnsavedRecording }) else { return false }
+    warning(
+      localized("Recording in progress", "录屏尚未完成"),
+      localized("Stop and save or cancel the recording before quitting or restarting.", "请先停止并保存或取消录屏，再退出或重新启动。"))
     return true
   }
   func assignGlobalShortcut(_ shortcut: Shortcut?, for name: String = "TAKE_SCREENSHOT") -> Bool {
@@ -559,7 +568,7 @@ import UserNotifications
     NSApp.orderFrontStandardAboutPanel(options: [
       .applicationName: "Flameshoter",
       .applicationVersion: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString")
-        as? String ?? "0.3.2",
+        as? String ?? "0.3.3",
       .version: localized(
         "Native Swift / AppKit · Based on Flameshot", "原生 Swift / AppKit · 基于 Flameshot"),
       .credits: NSAttributedString(

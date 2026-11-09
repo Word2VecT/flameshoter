@@ -2,7 +2,7 @@
 import AppKit
 
 public struct Preferences: Codable, Equatable, Sendable {
-  public var schemaVersion = 6
+  public var schemaVersion = 7
   public var values: [String: String] = [:]
   public var shortcuts = Shortcut.defaults
   public var unassignedShortcuts: Set<String> = []
@@ -248,6 +248,16 @@ public final class SettingsStore {
         }
       }
       preferences.schemaVersion = 6
+    }
+    if preferences.schemaVersion < 7 {
+      let tool = Tool.screenRecording
+      if !preferences.tools.contains(tool) { preferences.tools.append(tool) }
+      if let shortcut = Shortcut.defaults[tool.legacyName], preferences.shortcuts.contains(where: {
+        $0.key != tool.legacyName && !preferences.unassignedShortcuts.contains($0.key) && $0.value == shortcut
+      }) {
+        preferences.unassignedShortcuts.insert(tool.legacyName)
+      }
+      preferences.schemaVersion = 7
     }
     return preferences.schemaVersion != previousVersion
   }
