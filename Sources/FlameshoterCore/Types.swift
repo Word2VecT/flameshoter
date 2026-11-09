@@ -70,10 +70,11 @@ public enum Tool: Int, Codable, CaseIterable, Identifiable, Sendable {
   case screenRecording = 29
   case refreshCapture = 30
   case translate = 31
+  case recognizeTable = 32
   // Preserve Flameshot's getIterableButtonTypes() order, adding native Share after Save.
   public static let toolbarOrder: [Tool] = [
     .pencil, .line, .arrow, .select, .rectangle, .ellipse, .marker, .text,
-    .counter, .pixelate, .invert, .moveSelection, .undo, .redo, .refreshCapture, .longCapture, .screenRecording, .recognizeText, .recognizeQRCode, .translate,
+    .counter, .pixelate, .invert, .moveSelection, .undo, .redo, .refreshCapture, .longCapture, .screenRecording, .recognizeText, .recognizeQRCode, .translate, .recognizeTable,
     .copy, .save, .share,
     .exit, .pin, .sizeIncrease, .sizeDecrease, .accept,
   ]
@@ -105,6 +106,7 @@ public enum Tool: Int, Codable, CaseIterable, Identifiable, Sendable {
     case .screenRecording: return ("Record screen", "录制屏幕")
     case .refreshCapture: return ("Refresh screenshot", "刷新截图")
     case .translate: return ("Translate", "翻译")
+    case .recognizeTable: return ("Recognize table", "表格识别")
     case .exit: return ("Cancel capture", "取消截图")
     case .openWith: return ("Open with…", "使用其他应用打开…")
     case .pixelate: return ("Redact / pixelate", "遮挡 / 马赛克")
@@ -142,6 +144,7 @@ public enum Tool: Int, Codable, CaseIterable, Identifiable, Sendable {
     case .screenRecording: return "record.circle"
     case .refreshCapture: return "arrow.clockwise"
     case .translate: return "translate"
+    case .recognizeTable: return "tablecells"
     case .pixelate: return "square.dashed.inset.filled"
     case .pin: return "pin"
     case .text: return "textformat"
@@ -165,6 +168,7 @@ public enum Tool: Int, Codable, CaseIterable, Identifiable, Sendable {
       .longCapture: "LONG_CAPTURE", .screenRecording: "SCREEN_RECORDING",
       .refreshCapture: "REFRESH_CAPTURE",
       .translate: "TRANSLATE",
+      .recognizeTable: "RECOGNIZE_TABLE",
     ]
     return "TYPE_" + names[self]!
   }

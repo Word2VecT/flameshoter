@@ -163,7 +163,7 @@ private func translationPixels(_ image: CGImage) -> [UInt8] {
   old.shortcuts["TYPE_COPY"] = Shortcut(12, [.option])
   try JSONEncoder().encode(old).write(to: url)
   let updated = SettingsStore(url: url).preferences
-  #expect(updated.tools == [.copy, .translate])
+  #expect(updated.tools == [.copy, .translate, .recognizeTable])
   #expect(updated.shortcut("TYPE_COPY") == Shortcut(12, [.option]))
   #expect(updated.shortcut(Tool.translate.legacyName) == nil)
 }

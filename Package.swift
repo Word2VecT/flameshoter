@@ -10,8 +10,13 @@ let package = Package(
       name: "CWebP", path: "Vendor/libwebp", sources: ["src", "sharpyuv"],
       publicHeadersPath: "src/webp",
       cSettings: [.headerSearchPath("."), .define("WEBP_USE_THREAD")]),
+    .target(
+      name: "CXLSXWriter", path: "Vendor/libxlsxwriter", exclude: ["src/Makefile", "License.txt"],
+      sources: ["src", "third_party/minizip/zip.c", "third_party/minizip/ioapi.c"],
+      publicHeadersPath: "include", cSettings: [.define("USE_STANDARD_TMPFILE"), .define("USE_NO_MD5")],
+      linkerSettings: [.linkedLibrary("z")]),
     .target(name: "FlameshoterCore", dependencies: ["CWebP"]),
-    .executableTarget(name: "Flameshoter", dependencies: ["FlameshoterCore"]),
+    .executableTarget(name: "Flameshoter", dependencies: ["FlameshoterCore", "CXLSXWriter"]),
     .testTarget(
       name: "FlameshoterCoreTests", dependencies: ["FlameshoterCore", "Flameshoter"],
       resources: [.copy("Fixtures")]),

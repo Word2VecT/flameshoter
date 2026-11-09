@@ -8,5 +8,6 @@ The native application has no external Swift packages or bundled third-party fra
 
 - [OxiPNG 10.2.1](https://github.com/oxipng/oxipng/tree/v10.2.1) provides lossless PNG optimization under the MIT license. The official arm64 release executable is embedded and signed with the application; `scripts/prepare-image-tools.py` pins its archive URL and SHA-256. Its license is included as `licenses/oxipng-MIT.txt`.
 - [libwebp 1.6.0](https://github.com/webmproject/libwebp/tree/v1.6.0), by Google and the WebM project contributors, provides lossless WebP encoding and container metadata. Unmodified C sources in `Vendor/libwebp` are compiled statically. BSD license, patent grant and authors are included in `licenses/libwebp-COPYING`, `licenses/libwebp-PATENTS` and `licenses/libwebp-AUTHORS`.
+- [libxlsxwriter 1.2.4](https://github.com/jmcnamara/libxlsxwriter/tree/v1.2.4), by John McNamara and contributors, provides XLSX export. Unmodified C sources in `Vendor/libxlsxwriter` are compiled statically with zlib; its BSD and bundled component notices are included in `licenses/libxlsxwriter-LICENSE.txt`.
 
 The complete release source and build scripts are available at https://github.com/Word2VecT/flameshoter. See LICENSE for GPL-3.0-or-later terms.

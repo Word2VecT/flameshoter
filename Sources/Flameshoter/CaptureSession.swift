@@ -592,6 +592,10 @@ import FlameshoterCore
         guard !command.copy, !command.raw, command.path == nil, !command.pin, !command.geometry else { return }
         hide()
         app?.translate(image)
+      case .recognizeTable:
+        guard !command.copy, !command.raw, command.path == nil, !command.pin, !command.geometry else { return }
+        hide()
+        app?.recognizeTable(image)
       case .share:
         share(image)
         return
