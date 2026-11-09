@@ -111,6 +111,7 @@ import FlameshoterCore
     }
     active.window.makeKeyAndOrderFront(nil)
     active.window.makeFirstResponder(active.canvas)
+    active.canvas.updateAutomaticSelectionAtMouse()
     if Environment.shared.preferences.bool("useNativeFullscreen"),
       !active.window.styleMask.contains(.fullScreen)
     {
@@ -145,6 +146,7 @@ import FlameshoterCore
     surface.toolbar.refresh()
     let help =
       Environment.shared.preferences.bool("showHelp") && surface.canvas.document.selection == nil
+      && surface.canvas.suggestedSelection == nil
       && surface.window.isVisible
     if help {
       let size = surface.hint.contentView?.fittingSize ?? NSSize(width: 440, height: 90)

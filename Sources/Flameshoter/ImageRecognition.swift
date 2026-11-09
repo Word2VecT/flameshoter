@@ -183,8 +183,9 @@ enum ImageRecognition {
     _ overlayView: ImageAnalysisOverlayView, shouldBeginAt point: CGPoint,
     forAnalysisType analysisType: ImageAnalysisOverlayView.InteractionTypes
   ) -> Bool {
-    overlayView.analysisHasText(at: point) || overlayView.hasInteractiveItem(at: point)
-      || overlayView.hasActiveTextSelection
+    let reflected = CGPoint(x: point.x, y: overlayView.bounds.height - point.y)
+    return overlayView.analysisHasText(at: point) || overlayView.analysisHasText(at: reflected)
+      || overlayView.hasInteractiveItem(at: point) || overlayView.hasActiveTextSelection
   }
   func textSelectionDidChange(_ overlayView: ImageAnalysisOverlayView) {
     if overlayView.hasActiveTextSelection { textView.setSelectedRange(NSRange(location: 0, length: 0)) }

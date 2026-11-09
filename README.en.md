@@ -22,7 +22,7 @@
 
 ## Features
 
-- Region capture, multiple displays and delayed captures.
+- Region capture, multiple displays, delayed captures and automatic window selection; Accessibility access enables interface-element detection.
 - In-app annotation: pencil, lines, arrows, shapes, text, numbers and redaction.
 - Copy, save, pin and share through the macOS share sheet.
 - Recognize text and QR codes offline in captures and pinned images; select text directly in images.

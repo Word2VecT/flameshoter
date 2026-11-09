@@ -15,6 +15,7 @@ public struct Preferences: Codable, Equatable, Sendable {
     "allowMultipleGuiInstances": "false", "showDesktopNotification": "false",
     "showAbortNotification": "false", "showHelp": "true", "showQuitPrompt": "true",
     "saveLastRegion": "true", "copyOnDoubleClick": "false", "showMagnifier": "false",
+    "autoSelectionMode": "2",
     "squareMagnifier": "false", "showSidePanelButton": "true", "useNativeFullscreen": "false",
     "showSelectionGeometry": "4", "showSelectionGeometryHideTime": "3000", "undoLimit": "100",
     "antialiasingPinZoom": "true", "useSystemAccentColor": "true", "uiColor": "#007aff",
@@ -228,6 +229,7 @@ public final class SettingsStore {
       "drawThickness": 1...500, "drawRectangleSize": 1...500, "drawMarkerSize": 1...500,
       "drawFontSize": 1...500, "drawCircleCounterSize": 1...500, "drawPixelateSize": 1...500,
       "arrowStyle": 0...1, "textAlignment": 0...2,
+      "autoSelectionMode": 0...2,
     ]
     for (key, range) in ranges {
       guard let n = Int(p.string(key)), range.contains(n) else { throw SettingsError.invalid(key) }

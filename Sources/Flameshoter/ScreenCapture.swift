@@ -6,6 +6,10 @@ import ScreenCaptureKit
 @MainActor struct CapturedScreen {
   let image: CGImage
   let screen: NSScreen
+  var windows: [SelectionWindow] = []
+  var displayFrame: CGRect {
+    AutoSelection.displayFrame(screen.frame, primaryTop: NSScreen.screens.first?.frame.maxY ?? 0)
+  }
   var logicalSize: CGSize { screen.frame.size }
 }
 
@@ -68,7 +72,17 @@ import ScreenCaptureKit
           y: (CGFloat(height) - CGFloat(image.height) * fit) / 2, width: CGFloat(image.width) * fit,
           height: CGFloat(image.height) * fit))
       guard let output = context.makeImage() else { throw ImageError.renderFailed }
-      return [CapturedScreen(image: output, screen: screen)]
+      var frame = CapturedScreen(image: output, screen: screen)
+      if let region = ProcessInfo.processInfo.environment["FLAMESHOTER_TEST_WINDOW_REGION"] {
+        let local = NSRectFromString(region)
+        if !local.isEmpty {
+          let global = local.offsetBy(dx: frame.displayFrame.minX, dy: frame.displayFrame.minY)
+          frame.windows = [SelectionWindow(
+            processID: ProcessInfo.processInfo.processIdentifier,
+            globalFrame: global, localFrame: local)]
+        }
+      }
+      return [frame]
     }
     guard Permissions.ensureScreenCapture() else { throw CaptureError.permission }
     let content = try await SCShareableContent.excludingDesktopWindows(
@@ -96,7 +110,9 @@ import ScreenCaptureKit
       let output = try await SCScreenshotManager.captureScreenshot(
         contentFilter: filter, configuration: configuration)
       guard let image = output.sdrImage else { throw ImageError.renderFailed }
-      result.append(CapturedScreen(image: image, screen: screen))
+      var frame = CapturedScreen(image: image, screen: screen)
+      frame.windows = AutoSelection.windows(on: frame.displayFrame)
+      result.append(frame)
     }
     guard !result.isEmpty else { throw CaptureError.display }
     return result

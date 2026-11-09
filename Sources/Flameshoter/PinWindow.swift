@@ -11,9 +11,12 @@ import VisionKit
     guard let hit = super.hitTest(point) else { return nil }
     guard let textOverlay else { return hit }
     let location = textOverlay.convert(point, from: superview)
-    if textOverlay.analysisHasText(at: location) || textOverlay.hasText(at: location)
+    // VisionKit's image hit tests use top-left coordinates; AppKit image views are unflipped.
+    let imagePoint = CGPoint(
+      x: location.x, y: textOverlay.isFlipped ? location.y : textOverlay.bounds.height - location.y)
+    if textOverlay.analysisHasText(at: imagePoint) || textOverlay.hasText(at: imagePoint)
       || textOverlay.hasActiveTextSelection
-      || textOverlay.hasSupplementaryInterface(at: location)
+      || textOverlay.hasSupplementaryInterface(at: imagePoint)
     {
       return hit
     }
@@ -100,7 +103,6 @@ import VisionKit
     window.level = .floating
     window.hasShadow = true
     window.isReleasedWhenClosed = false
-    window.isMovableByWindowBackground = true
     window.contentAspectRatio = naturalSize
     window.contentMinSize = NSSize(
       width: 80, height: 80 * naturalSize.height / max(1, naturalSize.width))
@@ -187,8 +189,9 @@ import VisionKit
     _ overlayView: ImageAnalysisOverlayView, shouldBeginAt point: CGPoint,
     forAnalysisType analysisType: ImageAnalysisOverlayView.InteractionTypes
   ) -> Bool {
-    overlayView.analysisHasText(at: point) || overlayView.hasInteractiveItem(at: point)
-      || overlayView.hasActiveTextSelection
+    let reflected = CGPoint(x: point.x, y: overlayView.bounds.height - point.y)
+    return overlayView.analysisHasText(at: point) || overlayView.analysisHasText(at: reflected)
+      || overlayView.hasInteractiveItem(at: point) || overlayView.hasActiveTextSelection
   }
   func overlayView(
     _ overlayView: ImageAnalysisOverlayView, updatedMenuFor menu: NSMenu, for event: NSEvent,

@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import AppKit
+import ApplicationServices
 import FlameshoterCore
 
 @MainActor final class AnnotationLayer: PassiveView {
@@ -61,15 +62,28 @@ import FlameshoterCore
   private var renderedAnnotations: [Annotation] = []
   private var operation: DragOperation?
   private var originalAnnotations: [Annotation]?
+  private let automaticWindows: [SelectionWindow]
+  private let displayFrame: CGRect
+  private var automaticMode: Int
+  private var automaticTask: Task<Void, Never>?
+  private var automaticWindow: SelectionWindow?
+  private var automaticChoices: [CGRect] = []
+  private var automaticIndex = 0
+  private var automaticPoint: CGPoint?
+  private(set) var suggestedSelection: CGRect?
   private var prefs: Preferences { Environment.shared.preferences }
   private enum DragOperation {
     case region(CGPoint)
+    case automatic(CGPoint, CGRect)
     case moveRegion(CGPoint, CGRect)
     case resize(CGPoint, CGRect, Int)
     case drawing
     case annotation(CGPoint, Annotation)
   }
   init(frame: CapturedScreen) {
+    automaticWindows = frame.windows
+    displayFrame = frame.displayFrame
+    automaticMode = Environment.shared.preferences.integer("autoSelectionMode")
     document = CaptureDocument(
       image: frame.image, logicalSize: frame.logicalSize,
       undoLimit: Environment.shared.preferences.integer("undoLimit"))
@@ -201,7 +215,7 @@ import FlameshoterCore
       prefs.bool("useSystemAccentColor") ? nil : prefs.color("uiColor").color
     magnifier.cornerRadius = prefs.bool("squareMagnifier") ? 12 : 64
     edits.levelsOfUndo = prefs.integer("undoLimit")
-    let r = document.selection
+    let r = document.selection ?? suggestedSelection
     selectionGlass.isHidden = r == nil || r!.isEmpty
     if let r, !r.isEmpty {
       selectionGlass.frame = r
@@ -218,7 +232,7 @@ import FlameshoterCore
       ]
       for (handle, point) in zip(handles, points) {
         handle.frame = CGRect(x: point.x - 3, y: point.y - 3, width: 6, height: 6)
-        handle.isHidden = tool?.isDrawing == true
+        handle.isHidden = document.selection == nil || tool?.isDrawing == true
       }
       updateDimensions(r)
     } else {
@@ -275,6 +289,10 @@ import FlameshoterCore
     }
   }
   func setSelection(_ rect: CGRect?) {
+    automaticTask?.cancel()
+    suggestedSelection = nil
+    automaticChoices = []
+    automaticWindow = nil
     document.selection = rect.map { $0.standardized.intersection(bounds) }.flatMap {
       $0.isEmpty || $0.isNull ? nil : $0
     }
@@ -338,6 +356,54 @@ import FlameshoterCore
   private func bounded(_ point: CGPoint) -> CGPoint {
     CGPoint(x: min(max(0, point.x), bounds.width), y: min(max(0, point.y), bounds.height))
   }
+  private func suggest(_ rect: CGRect?) {
+    guard suggestedSelection != rect else { return }
+    suggestedSelection = rect
+    refreshPresentation()
+    onChange?()
+  }
+  func updateAutomaticSelectionAtMouse() {
+    guard let window, document.selection == nil else { return }
+    updateAutomaticSelection(at: convert(window.mouseLocationOutsideOfEventStream, from: nil))
+  }
+  private func updateAutomaticSelection(at point: CGPoint) {
+    guard document.selection == nil, operation == nil, automaticMode > 0,
+      let window = AutoSelection.window(at: point, in: automaticWindows)
+    else {
+      automaticTask?.cancel()
+      automaticWindow = nil
+      automaticChoices = []
+      automaticPoint = nil
+      suggest(nil)
+      return
+    }
+    automaticPoint = point
+    if automaticWindow != window || suggestedSelection?.contains(point) != true {
+      automaticWindow = window
+      automaticChoices = [window.localFrame]
+      automaticIndex = 0
+      suggest(window.localFrame)
+    }
+    automaticTask?.cancel()
+    guard automaticMode == 2, AXIsProcessTrusted() else { return }
+    let globalPoint = CGPoint(x: displayFrame.minX + point.x, y: displayFrame.minY + point.y)
+    let display = displayFrame
+    automaticTask = Task { [weak self] in
+      do { try await Task.sleep(for: .milliseconds(75)) } catch { return }
+      let choices = await Task.detached(priority: .userInitiated) {
+        AutoSelection.accessibilityFrames(at: globalPoint, window: window, display: display)
+      }.value
+      guard !Task.isCancelled, let self, self.document.selection == nil, self.operation == nil,
+        self.automaticWindow == window, self.automaticPoint == point
+      else { return }
+      self.automaticChoices = choices
+      if !self.automaticChoices.contains(window.localFrame) {
+        self.automaticChoices.append(window.localFrame)
+      }
+      self.automaticIndex = 0
+      self.suggest(self.automaticChoices.first)
+    }
+  }
   private func edges(_ point: CGPoint, _ r: CGRect) -> Int {
     guard r.insetBy(dx: -8, dy: -8).contains(point) else { return 0 }
     var edges = 0
@@ -382,6 +448,12 @@ import FlameshoterCore
       return
     }
     guard let r = document.selection else {
+      if suggestedSelection?.contains(p) != true { updateAutomaticSelection(at: p) }
+      if let suggestion = suggestedSelection, suggestion.contains(p) {
+        automaticTask?.cancel()
+        operation = .automatic(p, suggestion)
+        return
+      }
       operation = .region(p)
       setSelection(CGRect(origin: p, size: CGSize(width: 1, height: 1)))
       return
@@ -425,6 +497,18 @@ import FlameshoterCore
   override func mouseDragged(with event: NSEvent) {
     let p = bounded(point(event))
     switch operation {
+    case .automatic(let start, _):
+      guard hypot(p.x - start.x, p.y - start.y) >= 3 else { return }
+      operation = .region(start)
+      var end = p
+      if event.modifierFlags.contains(.shift) {
+        let length = min(abs(p.x - start.x), abs(p.y - start.y))
+        end = CGPoint(
+          x: start.x + (p.x >= start.x ? length : -length),
+          y: start.y + (p.y >= start.y ? length : -length))
+      }
+      setSelection(
+        CGRect(x: start.x, y: start.y, width: end.x - start.x, height: end.y - start.y).standardized)
     case .region(let start):
       var end = p
       if event.modifierFlags.contains(.shift) {
@@ -484,6 +568,7 @@ import FlameshoterCore
     }
   }
   override func mouseUp(with event: NSEvent) {
+    if case .automatic(_, let region) = operation { setSelection(region) }
     if case .drawing = operation, let a = preview,
       [.pencil, .marker].contains(a.tool) || a.bounds.width > 0.5 || a.bounds.height > 0.5
     {
@@ -496,7 +581,7 @@ import FlameshoterCore
     }
     let settled: Bool
     switch operation {
-    case .region, .moveRegion, .resize: settled = true
+    case .region, .automatic, .moveRegion, .resize: settled = true
     default: settled = false
     }
     preview = nil
@@ -514,6 +599,7 @@ import FlameshoterCore
     onInspector?()
   }
   override func mouseMoved(with event: NSEvent) {
+    updateAutomaticSelection(at: point(event))
     guard prefs.bool("showMagnifier"), tool?.isDrawing != true else {
       magnifier.isHidden = true
       return
@@ -535,8 +621,22 @@ import FlameshoterCore
       height: 128)
     magnifier.isHidden = false
   }
-  override func mouseExited(with event: NSEvent) { magnifier.isHidden = true }
+  override func mouseExited(with event: NSEvent) {
+    magnifier.isHidden = true
+    if document.selection == nil, operation == nil {
+      automaticTask?.cancel()
+      automaticWindow = nil
+      automaticChoices = []
+      suggest(nil)
+    }
+  }
   override func scrollWheel(with event: NSEvent) {
+    if document.selection == nil, automaticChoices.count > 1 {
+      automaticIndex = min(
+        automaticChoices.count - 1, max(0, automaticIndex + (event.scrollingDeltaY > 0 ? 1 : -1)))
+      suggest(automaticChoices[automaticIndex])
+      return
+    }
     guard let tool, tool.isDrawing else { return }
     let n = min(500, max(1, prefs.integer(tool.sizeKey) + (event.scrollingDeltaY > 0 ? 1 : -1)))
     Environment.shared.settings.set(tool.sizeKey, n)
@@ -656,6 +756,14 @@ import FlameshoterCore
         refresh()
       } else {
         onAction?(.exit)
+      }
+      return true
+    }
+    if event.keyCode == 48, document.selection == nil, automaticMode > 0 {
+      automaticMode = automaticMode == 1 ? 2 : 1
+      automaticWindow = nil
+      if let window {
+        updateAutomaticSelection(at: convert(window.mouseLocationOutsideOfEventStream, from: nil))
       }
       return true
     }

@@ -56,4 +56,6 @@ The macOS workflow builds and audits every master push. A `v*` tag matching VERS
 
 `FLAMESHOTER_TEST_IMAGE=/absolute/path/to/fixture.png` replaces desktop capture with that image and avoids asking for Screen Recording access. `FLAMESHOTER_TEST_CONFIG=/absolute/path/to/config-root` isolates test preferences. These are opt-in developer fixtures; normal captures use ScreenCaptureKit. Test with `tests/fixtures/capture.svg`, rendered to PNG, rather than private desktop content.
 
+With the image fixture enabled, `FLAMESHOTER_TEST_WINDOW_REGION='{{300, 200}, {400, 300}}'` adds a simulated window for testing automatic selection without accessing real windows.
+
 The audit rejects third-party framework bundles and non-system dynamic libraries. macOS 26 compatibility is checked through deployment metadata; a physical macOS 26 runtime should be included in release qualification in addition to tests on macOS 27.

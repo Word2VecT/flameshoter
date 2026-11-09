@@ -274,6 +274,19 @@ import UserNotifications
       "Capture", "截图", "viewfinder",
       [
         heading("Selection", "截图选区"),
+        popup(
+          "autoSelectionMode", "Automatic selection", "自动识别选区",
+          [localized("Off", "关闭"), localized("Windows", "窗口"),
+            localized("Windows and interface elements", "窗口和界面元素")]),
+        label(
+          localized(
+            "Interface-element detection requires Accessibility access; windows work without it.",
+            "识别界面元素需要辅助功能权限；未授权时仍可识别窗口。"), secondary: true),
+        ActionButton(localized("Accessibility settings…", "辅助功能权限设置…")) {
+          if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility") {
+            NSWorkspace.shared.open(url)
+          }
+        },
         boolean("saveLastRegion", "Remember the last capture region", "记住上次截图区域"),
         boolean("copyOnDoubleClick", "Double-click to copy", "双击复制截图"),
         boolean("showMagnifier", "Show pixel magnifier", "显示像素放大镜"),

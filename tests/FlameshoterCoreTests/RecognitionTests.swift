@@ -68,7 +68,8 @@ private func qrFixture(_ payload: String) -> CGImage {
     if textPoint != nil { break }
   }
   let point = try #require(textPoint)
-  let parentPoint = overlay.convert(point, to: pin.imageView.superview)
+  let viewPoint = CGPoint(x: point.x, y: overlay.isFlipped ? point.y : size.height - point.y)
+  let parentPoint = overlay.convert(viewPoint, to: pin.imageView.superview)
   let hit = try #require(pin.imageView.hitTest(parentPoint))
   #expect(hit === overlay || hit.isDescendant(of: overlay))
   let blank = overlay.convert(CGPoint(x: size.width - 2, y: size.height - 2), to: pin.imageView.superview)

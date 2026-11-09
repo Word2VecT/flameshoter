@@ -1,5 +1,5 @@
-# Flameshoter 0.2.9
+# Flameshoter 0.3.0
 
-Expands the hit area around capture toolbar buttons, prevents disabled buttons from passing clicks through to the selection, and chooses the nearest button where hit areas overlap.
+Recognize text and QR codes locally from captures and pinned images. Recognized text can be edited or selected with macOS Live Text.
 
-Reuses the unchanged annotation preview while moving or resizing the selection, reducing unnecessary full-screen rendering. The screenshot preview's inner clip now has square corners to match its glass frame.
+Automatically select windows under the pointer, or detect interface elements with macOS Accessibility access. Choose the detection mode in Settings or drag to select an arbitrary region.
