@@ -43,6 +43,20 @@ import FlameshoterCore
   private var longCapture: LongCaptureSession?
   private var recording: ScreenRecordingSession?
   private var regionHistoryIndices: [Int: Int] = [:]
+  private struct CaptureDraft {
+    let selection: CGRect?
+    let annotations: [Annotation]
+    let edits: UndoManager
+  }
+  private struct CaptureNavigation {
+    var live: CaptureDocument
+    var liveEdits: UndoManager
+    let entries: [CaptureHistoryEntry]
+    var index: Int?
+    var drafts: [UUID: CaptureDraft] = [:]
+  }
+  private var captureNavigation: [Int: CaptureNavigation] = [:]
+  private var loadingCaptureHistory = false
   var hasUnsavedRecording: Bool { recording?.hasUnsavedRecording ?? false }
   private var exporting = false
   init(frames: [CapturedScreen], command: NativeCommand, app: AppController) {
@@ -103,6 +117,7 @@ import FlameshoterCore
         if self.command.acceptOnSelect { self.perform(.accept, on: index) }
       }
       canvas.onRegionHistory = { [weak self] direction in self?.cycleRegion(on: index, direction: direction) }
+      canvas.onCaptureHistory = { [weak self] direction in self?.cycleCapture(on: index, direction: direction) }
     }
     if let screen = frames.firstIndex(where: { $0.screen.frame.contains(NSEvent.mouseLocation) }) {
       activeIndex = screen
@@ -223,6 +238,7 @@ import FlameshoterCore
   private func cycleRegion(on index: Int, direction: Int) {
     guard surfaces.indices.contains(index), activate(index) else { return }
     let surface = surfaces[index]
+    guard surface.canvas.historySnapshot == nil else { NSSound.beep(); return }
     let history = Environment.shared.regionHistory
     let limit = Environment.shared.preferences.integer("regionHistoryLimit")
     guard limit > 0 else { NSSound.beep(); return }
@@ -236,6 +252,96 @@ import FlameshoterCore
       ?? (direction < 0 ? regions.count - 1 : 0)
     regionHistoryIndices[index] = target
     surface.canvas.setSelection(regions[target])
+  }
+  private func cycleCapture(on index: Int, direction: Int) {
+    guard !loadingCaptureHistory, surfaces.indices.contains(index), activate(index) else { return }
+    let limit = Environment.shared.preferences.integer("captureHistoryLimit")
+    guard limit > 0 else { NSSound.beep(); return }
+    loadingCaptureHistory = true
+    Task { @MainActor [weak self] in
+      guard let self else { return }
+      defer { self.loadingCaptureHistory = false }
+      let surface = self.surfaces[index]
+      let canvas = surface.canvas
+      do {
+        if self.captureNavigation[index] == nil {
+          let result: Result<[CaptureHistoryEntry], Error> = await withCheckedContinuation { continuation in
+            Environment.shared.captureHistory.list(
+              display: RegionHistory.displayIdentifier(surface.screen), bounds: canvas.bounds,
+              scale: canvas.document.scale, limit: limit
+            ) { continuation.resume(returning: $0) }
+          }
+          let entries = try result.get()
+          guard !entries.isEmpty else { NSSound.beep(); return }
+          guard !self.closing, self.activeIndex == index else { return }
+          canvas.commitText()
+          self.captureNavigation[index] = CaptureNavigation(
+            live: canvas.document, liveEdits: canvas.edits, entries: entries)
+        }
+        guard var navigation = self.captureNavigation[index] else { return }
+        let count = navigation.entries.count
+        let current = navigation.index ?? count
+        let target = (current + direction + count + 1) % (count + 1)
+        var snapshot: CaptureHistorySnapshot?
+        var background: CGImage?
+        if target < count {
+          let id = navigation.entries[target].id
+          let result: Result<CaptureHistorySnapshot, Error> = await withCheckedContinuation { continuation in
+            Environment.shared.captureHistory.snapshot(id: id) { continuation.resume(returning: $0) }
+          }
+          snapshot = try result.get()
+          let loaded = snapshot!
+          let liveImage = navigation.live.image
+          background = try await Task.detached(priority: .userInitiated) {
+            try loaded.composite(over: liveImage)
+          }.value
+        }
+        guard !self.closing, self.activeIndex == index else { return }
+        canvas.commitText()
+        if let current = navigation.index {
+          navigation.drafts[navigation.entries[current].id] = CaptureDraft(
+            selection: canvas.document.selection, annotations: canvas.document.annotations, edits: canvas.edits)
+        } else {
+          navigation.live = canvas.document
+          navigation.liveEdits = canvas.edits
+        }
+        if let snapshot, let background {
+          var document = CaptureDocument(
+            image: background, logicalSize: navigation.live.logicalSize, undoLimit: navigation.live.undoLimit)
+          if let draft = navigation.drafts[snapshot.entry.id] {
+            document.selection = draft.selection
+            document.replaceAnnotations(draft.annotations, recordingUndo: false)
+          } else {
+            document.selection = snapshot.entry.rectangle
+            let origin = snapshot.entry.rectangle.origin
+            document.replaceAnnotations(snapshot.entry.annotations.map { original in
+              var annotation = original
+              annotation.move(by: CGSize(width: origin.x, height: origin.y))
+              return annotation
+            }, recordingUndo: false)
+          }
+          navigation.index = target
+          self.captureNavigation[index] = navigation
+          surface.window.title = localized("Screenshot history", "截图历史")
+          canvas.replaceDocument(document, history: snapshot, edits: navigation.drafts[snapshot.entry.id]?.edits)
+        } else {
+          navigation.index = nil
+          self.captureNavigation[index] = navigation
+          surface.window.title = localized("Flameshoter Capture", "Flameshoter 截图")
+          canvas.replaceDocument(navigation.live, edits: navigation.liveEdits)
+        }
+      } catch { self.app?.showCaptureHistoryError(error) }
+    }
+  }
+  private func recordCapture(_ canvas: CanvasView) {
+    let limit = Environment.shared.preferences.integer("captureHistoryLimit")
+    guard limit > 0 else { return }
+    let source = canvas.sourceDocument()
+    do {
+      let snapshot = try CaptureHistorySnapshot.make(
+        document: source.document, display: RegionHistory.displayIdentifier(active.screen), origin: source.origin)
+      Environment.shared.captureHistory.record(snapshot, limit: limit)
+    } catch { app?.showCaptureHistoryError(error) }
   }
   private static func savedRegion() -> CGRect? {
     let string = Environment.shared.preferences.string("lastRegion")
@@ -265,6 +371,7 @@ import FlameshoterCore
         }
         switch result {
         case .success(true):
+          self.recordCapture(self.active.canvas)
           self.app?.respond(
             self.command, image: image, selection: self.active.canvas.document.pixelSelection)
           self.close()
@@ -423,6 +530,7 @@ import FlameshoterCore
         if command.pin { app?.pin(image, screen: active.screen) }
       default: return
       }
+      recordCapture(canvas)
       app?.respond(command, image: image, selection: selection)
       close()
     } catch {

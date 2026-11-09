@@ -33,7 +33,7 @@ import FlameshoterCore
   var tool: Tool?
   var selectedID: UUID?
   var selectedAnnotation: Annotation? { document.annotations.first { $0.id == selectedID } }
-  let edits = UndoManager()
+  private(set) var edits = UndoManager()
   override var undoManager: UndoManager? { edits }
   override var acceptsFirstResponder: Bool { true }
   override var isFlipped: Bool { true }
@@ -43,6 +43,7 @@ import FlameshoterCore
   var onInteract: (() -> Bool)?
   var onRegionSettled: (() -> Void)?
   var onRegionHistory: ((Int) -> Void)?
+  var onCaptureHistory: ((Int) -> Void)?
   var onInspector: (() -> Void)?
   var onCopyColor: ((String) -> Void)?
   let frost = PassiveFrost()
@@ -64,6 +65,8 @@ import FlameshoterCore
   private var dimensionsTimer: Timer?
   private var lastPresentation: CGRect?
   private var renderedAnnotations: [Annotation] = []
+  private var renderedSourceBounds: CGRect?
+  private(set) var historySnapshot: CaptureHistorySnapshot?
   private var operation: DragOperation?
   private var lastModifiers: NSEvent.ModifierFlags = []
   private var colorFormat: ScreenColor.Format
@@ -213,12 +216,15 @@ import FlameshoterCore
     if let preview {
       composed.replaceAnnotations(composed.annotations + [preview], recordingUndo: false)
     }
-    // Moving the selection does not change the full-screen annotation preview.
-    if composed.annotations != renderedAnnotations,
+    // Redaction and filters sample only inside the selection, so their previews depend on it.
+    let sourceBounds = composed.annotations.contains(where: { [.pixelate, .invert].contains($0.tool) })
+      ? composed.selection : nil
+    if composed.annotations != renderedAnnotations || sourceBounds != renderedSourceBounds,
       let image = try? ImageRenderer.render(composed, includeSelection: false)
     {
       selectedImage.image = NSImage(cgImage: image, size: document.logicalSize)
       renderedAnnotations = composed.annotations
+      renderedSourceBounds = sourceBounds
     }
     drawing.needsDisplay = true
   }
@@ -308,7 +314,8 @@ import FlameshoterCore
     suggestedSelection = nil
     automaticChoices = []
     automaticWindow = nil
-    document.selection = rect.map { $0.standardized.intersection(bounds) }.flatMap {
+    let available = historySnapshot?.entry.rectangle ?? bounds
+    document.selection = rect.map { $0.standardized.intersection(available) }.flatMap {
       $0.isEmpty || $0.isNull ? nil : $0
     }
     refresh()
@@ -365,11 +372,41 @@ import FlameshoterCore
   }
   func rendered() throws -> CGImage {
     commitText()
-    return try ImageRenderer.render(document)
+    return try ImageRenderer.render(sourceDocument().document)
+  }
+  func sourceDocument() -> (document: CaptureDocument, origin: CGPoint) {
+    guard let snapshot = historySnapshot else { return (document, .zero) }
+    let origin = snapshot.entry.rectangle.origin
+    var source = snapshot.document(undoLimit: document.undoLimit)
+    source.selection = document.selection?.offsetBy(dx: -origin.x, dy: -origin.y)
+    source.replaceAnnotations(document.annotations.map { original in
+      var annotation = original
+      annotation.move(by: CGSize(width: -origin.x, height: -origin.y))
+      return annotation
+    }, recordingUndo: false)
+    return (source, origin)
+  }
+  func replaceDocument(
+    _ replacement: CaptureDocument, history: CaptureHistorySnapshot? = nil, edits: UndoManager? = nil
+  ) {
+    commitText()
+    document = replacement
+    historySnapshot = history
+    preview = nil
+    selectedID = nil
+    operation = nil
+    originalAnnotations = nil
+    self.edits = edits ?? UndoManager()
+    renderedAnnotations = []
+    renderedSourceBounds = nil
+    selectedImage.image = NSImage(cgImage: document.image, size: document.logicalSize)
+    needsDisplay = true
+    refresh()
   }
   private func point(_ event: NSEvent) -> CGPoint { convert(event.locationInWindow, from: nil) }
   private func bounded(_ point: CGPoint) -> CGPoint {
-    CGPoint(x: min(max(0, point.x), bounds.width), y: min(max(0, point.y), bounds.height))
+    let area = historySnapshot?.entry.rectangle ?? bounds
+    return CGPoint(x: min(max(area.minX, point.x), area.maxX), y: min(max(area.minY, point.y), area.maxY))
   }
   private func suggest(_ rect: CGRect?) {
     guard suggestedSelection != rect else { return }
@@ -456,6 +493,10 @@ import FlameshoterCore
     commitText()
     if onInteract?() == false { return }
     window?.makeFirstResponder(self)
+    if let historySnapshot, !historySnapshot.entry.rectangle.contains(point(event)) {
+      NSSound.beep()
+      return
+    }
     let p = bounded(point(event))
     if event.clickCount == 2, tool == .select, let text = document.annotation(at: p),
       text.tool == .text
@@ -542,8 +583,9 @@ import FlameshoterCore
       )
     case .moveRegion(let start, let rect):
       var moved = rect.offsetBy(dx: p.x - start.x, dy: p.y - start.y)
-      moved.origin.x = max(0, min(bounds.width - moved.width, moved.minX))
-      moved.origin.y = max(0, min(bounds.height - moved.height, moved.minY))
+      let area = historySnapshot?.entry.rectangle ?? bounds
+      moved.origin.x = max(area.minX, min(area.maxX - moved.width, moved.minX))
+      moved.origin.y = max(area.minY, min(area.maxY - moved.height, moved.minY))
       setSelection(moved)
     case .resize(let start, let rect, let edges):
       var x1 = rect.minX
@@ -819,6 +861,11 @@ import FlameshoterCore
       onRegionHistory?(direction)
       return true
     }
+    for (name, direction) in [("TYPE_PREVIOUS_CAPTURE", -1), ("TYPE_NEXT_CAPTURE", 1)]
+    where prefs.shortcut(name)?.matches(event) == true {
+      onCaptureHistory?(direction)
+      return true
+    }
     for action in Tool.allCases where prefs.shortcut(action.legacyName)?.matches(event) == true {
       if action.isDrawing || [.select, .moveSelection].contains(action) {
         setTool(action)
@@ -850,8 +897,9 @@ import FlameshoterCore
         if mode == "MOVE_" {
           r.origin.x += delta.width
           r.origin.y += delta.height
-          r.origin.x = max(0, min(bounds.width - r.width, r.minX))
-          r.origin.y = max(0, min(bounds.height - r.height, r.minY))
+          let area = historySnapshot?.entry.rectangle ?? bounds
+          r.origin.x = max(area.minX, min(area.maxX - r.width, r.minX))
+          r.origin.y = max(area.minY, min(area.maxY - r.height, r.minY))
         } else {
           if mode == "SYM_RESIZE_" {
             r.origin.x -= delta.width

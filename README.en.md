@@ -24,6 +24,7 @@
 
 - Region capture, multiple displays, delayed captures and automatic window selection; Accessibility access enables interface-element detection.
 - Save and cycle through capture regions per display.
+- Restore screenshot history on the same display and scale, and edit its annotations. History retains the original selected image, including before redaction; recording can be disabled and history cleared in Settings.
 - Vertical and horizontal scrolling captures with preview, cropping, copying, saving and pinning.
 - Record a region with frame rate, delay, audio, pause, preview and trimming; save as MP4, GIF or animated WebP.
 - In-app annotation: pencil, lines, arrows, shapes, text, numbers and redaction.
@@ -66,6 +67,7 @@ These are the defaults. Shortcuts can be changed in Settings.
 | ⇧C / Q | Recognize text / QR code |
 | L | Scrolling capture |
 | G | Record screen |
+| , / . | Previous / next screenshot in history |
 | [ / ] | Previous / next capture region |
 | ⌥C | Copy the color under the pointer; hold ⌥ and press ⇧ to change formats |
 | Space / right-click | Tool settings |

@@ -306,6 +306,23 @@ import UserNotifications
             warning(localized("Unable to clear region history", "无法清除截图区域历史"), errorMessage(error))
           }
         },
+        integer("captureHistoryLimit", "Screenshots retained (0 disables history)", "保留的截图数量（0 为关闭）", 0...99999),
+        label(localized(
+          "Use , and . during capture to browse. History keeps the selected original so redactions remain editable. Disabling history does not erase existing records.",
+          "截图时按 , 和 . 切换历史。历史会保留选区原图，以便编辑遮挡标注；关闭记录不会删除已有历史。"), secondary: true),
+        ActionButton(localized("Clear screenshot history…", "清除截图内容历史…")) {
+          let alert = NSAlert()
+          alert.messageText = localized("Clear screenshot history?", "清除截图内容历史？")
+          alert.informativeText = localized("This cannot be undone.", "此操作无法撤销。")
+          alert.addButton(withTitle: localized("Cancel", "取消"))
+          alert.addButton(withTitle: localized("Clear", "清除"))
+          guard alert.runModal() == .alertSecondButtonReturn else { return }
+          Environment.shared.captureHistory.clear { result in
+            if case .failure(let error) = result {
+              Task { @MainActor in warning(localized("Unable to clear screenshot history", "无法清除截图内容历史"), errorMessage(error)) }
+            }
+          }
+        },
         boolean("copyOnDoubleClick", "Double-click to copy", "双击复制截图"),
         boolean("showMagnifier", "Show pixel magnifier", "显示像素放大镜"),
         boolean("squareMagnifier", "Use a square magnifier", "使用方形放大镜"),
@@ -522,6 +539,8 @@ import UserNotifications
       "TYPE_COPY_PIXEL_COLOR": ("Copy pixel color", "复制像素颜色"),
       "TYPE_PREVIOUS_REGION": ("Previous capture region", "上一个截图区域"),
       "TYPE_NEXT_REGION": ("Next capture region", "下一个截图区域"),
+      "TYPE_PREVIOUS_CAPTURE": ("Previous screenshot", "上一张截图"),
+      "TYPE_NEXT_CAPTURE": ("Next screenshot", "下一张截图"),
       "TYPE_CLOSE_ACTIVE_PIN_WINDOW": ("Close pinned capture", "关闭置顶截图"),
       "TYPE_MOVE_LEFT": ("Move left", "向左移动选区"), "TYPE_MOVE_RIGHT": ("Move right", "向右移动选区"),
       "TYPE_MOVE_UP": ("Move up", "向上移动选区"), "TYPE_MOVE_DOWN": ("Move down", "向下移动选区"),

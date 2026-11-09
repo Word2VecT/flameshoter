@@ -29,6 +29,20 @@ public enum ImageError: LocalizedError {
     else { throw ImageError.emptySelection }
     // The unannotated path returns a pixel crop directly: no material, scaling or color conversion.
     guard !document.annotations.isEmpty else { return crop }
+    if includeSelection, document.selection != nil {
+      // Render against the selected pixels only. Besides avoiding unnecessary work, this
+      // makes redaction at the edge independent of pixels outside the user's selection.
+      var selected = CaptureDocument(
+        image: crop,
+        logicalSize: CGSize(width: pixelRect.width / document.scale, height: pixelRect.height / document.scale),
+        undoLimit: document.undoLimit)
+      selected.replaceAnnotations(document.annotations.map { original in
+        var annotation = original
+        annotation.move(by: CGSize(width: -pixelRect.minX / document.scale, height: -pixelRect.minY / document.scale))
+        return annotation
+      }, recordingUndo: false)
+      return try render(selected, includeSelection: false)
+    }
     let space = document.image.colorSpace ?? CGColorSpace(name: CGColorSpace.sRGB)!
     guard
       let context = CGContext(
@@ -48,7 +62,8 @@ public enum ImageError: LocalizedError {
       let source =
         [.pixelate, .invert].contains(annotation.tool)
         ? context.makeImage() ?? document.image : document.image
-      draw(annotation, in: context, source: source, scale: document.scale)
+      draw(annotation, in: context, source: source, scale: document.scale,
+           sourceBounds: document.selection == nil ? nil : document.pixelSelection)
     }
     NSGraphicsContext.restoreGraphicsState()
     guard let image = context.makeImage()?.cropping(to: pixelRect) else {
@@ -57,7 +72,8 @@ public enum ImageError: LocalizedError {
     return image
   }
   public static func draw(
-    _ annotation: Annotation, in context: CGContext, source: CGImage, scale: CGFloat
+    _ annotation: Annotation, in context: CGContext, source: CGImage, scale: CGFloat,
+    sourceBounds: CGRect? = nil
   ) {
     let a = annotation
     let r = a.bounds
@@ -152,30 +168,40 @@ public enum ImageError: LocalizedError {
     case .pixelate:
       if a.traditionalPixelation {
         drawFilter(
-          "CIPixellate", rect: r, width: a.width, context: context, source: source, scale: scale)
+          "CIPixellate", rect: r, width: a.width, context: context, source: source, scale: scale,
+          sourceBounds: sourceBounds)
       } else {
-        redact(rect: r, block: max(4, a.width), context: context, source: source, scale: scale)
+        redact(rect: r, block: max(4, a.width), context: context, source: source, scale: scale,
+               sourceBounds: sourceBounds)
       }
     case .invert:
       drawFilter(
-        "CIColorInvert", rect: r, width: a.width, context: context, source: source, scale: scale)
+        "CIColorInvert", rect: r, width: a.width, context: context, source: source, scale: scale,
+        sourceBounds: sourceBounds)
     default: break
     }
   }
   private static func drawFilter(
-    _ name: String, rect: CGRect, width: Double, context: CGContext, source: CGImage, scale: CGFloat
+    _ name: String, rect: CGRect, width: Double, context: CGContext, source: CGImage, scale: CGFloat,
+    sourceBounds: CGRect?
   ) {
-    let pixel = CGRect(
+    var pixel = CGRect(
       x: rect.minX * scale, y: rect.minY * scale, width: rect.width * scale,
       height: rect.height * scale
     ).integral.intersection(CGRect(x: 0, y: 0, width: source.width, height: source.height))
+    if let sourceBounds { pixel = pixel.intersection(sourceBounds) }
     guard !pixel.isNull, !pixel.isEmpty, let region = source.cropping(to: pixel) else { return }
     let input = CIImage(cgImage: region)
     let parameters: [String: Any] =
       name == "CIPixellate" ? [kCIInputScaleKey: max(2, width * scale)] : [:]
     let output = input.applyingFilter(name, parameters: parameters)
     guard let image = filters.createCGImage(output, from: input.extent) else { return }
-    drawUpright(image, in: rect, context: context)
+    context.saveGState()
+    context.clip(to: rect)
+    drawUpright(image, in: CGRect(
+      x: pixel.minX / scale, y: pixel.minY / scale,
+      width: pixel.width / scale, height: pixel.height / scale), context: context)
+    context.restoreGState()
   }
   private static func drawUpright(_ image: CGImage, in rect: CGRect, context: CGContext) {
     context.saveGState()
@@ -186,7 +212,8 @@ public enum ImageError: LocalizedError {
     context.restoreGState()
   }
   private static func redact(
-    rect: CGRect, block: CGFloat, context: CGContext, source: CGImage, scale: CGFloat
+    rect: CGRect, block: CGFloat, context: CGContext, source: CGImage, scale: CGFloat,
+    sourceBounds: CGRect?
   ) {
     let w = source.width
     let h = source.height
@@ -205,6 +232,7 @@ public enum ImageError: LocalizedError {
     var fringe: [CGColor] = []
     func sample(_ x: Int, _ y: Int) {
       guard x >= 0, y >= 0, x < w, y < h else { return }
+      if let sourceBounds, !sourceBounds.contains(CGPoint(x: CGFloat(x) + 0.5, y: CGFloat(y) + 0.5)) { return }
       let n = y * w * 4 + x * 4
       fringe.append(
         CGColor(

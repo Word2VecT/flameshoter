@@ -7,6 +7,12 @@ import FlameshoterCore
   let settings: SettingsStore
   lazy var regionHistory = RegionHistory(url: settings.url.deletingLastPathComponent()
     .appendingPathComponent("CaptureHistory", isDirectory: true).appendingPathComponent("regions.json"))
+  lazy var captureHistory = CaptureHistory(
+    directory: settings.url.deletingLastPathComponent()
+      .appendingPathComponent("CaptureHistory/Screenshots", isDirectory: true),
+    onError: { error in
+      Task { @MainActor in (NSApp.delegate as? AppController)?.showCaptureHistoryError(error) }
+    })
   var preferences: Preferences { settings.preferences }
   init() {
     let variables = ProcessInfo.processInfo.environment

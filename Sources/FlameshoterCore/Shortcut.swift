@@ -97,6 +97,7 @@ public struct Shortcut: Codable, Equatable, Sendable {
       "TYPE_DELETE_CURRENT_TOOL": "Backspace", "TYPE_CLOSE_ACTIVE_PIN_WINDOW": "Ctrl+Q",
       "TYPE_GRAB_COLOR": "Ctrl+G", "TYPE_COPY_PIXEL_COLOR": "Alt+C",
       "TYPE_PREVIOUS_REGION": "[", "TYPE_NEXT_REGION": "]",
+      "TYPE_PREVIOUS_CAPTURE": ",", "TYPE_NEXT_CAPTURE": ".",
       "TYPE_SIZEINCREASE": "=", "TYPE_SIZEDECREASE": "-",
       "TYPE_MOVE_LEFT": "Left", "TYPE_MOVE_RIGHT": "Right", "TYPE_MOVE_UP": "Up",
       "TYPE_MOVE_DOWN": "Down", "TYPE_RESIZE_LEFT": "Shift+Left",

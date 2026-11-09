@@ -25,6 +25,7 @@ import UserNotifications
   private var dirtyPinText: Set<UUID> = []
   private var pinArchiveErrorShown = false
   private var regionHistoryErrorShown = false
+  private var captureHistoryErrorShown = false
   private var pinArchiveFailure: Error?
   private var terminating = false
   private lazy var pinArchive = PinArchive(
@@ -146,6 +147,12 @@ import UserNotifications
       case .archived: break
       }
     }
+    Environment.shared.captureHistory.flush { [weak self] _ in
+      Task { @MainActor [weak self] in self?.finishTermination() }
+    }
+    return .terminateLater
+  }
+  private func finishTermination() {
     pinArchive.flush { [weak self] result in
       Task { @MainActor [weak self] in
         if case .success = result, self?.pinArchiveFailure == nil {
@@ -165,7 +172,6 @@ import UserNotifications
         }
       }
     }
-    return .terminateLater
   }
   func applicationWillTerminate(_ notification: Notification) {
     if let commandObserver {
@@ -695,6 +701,13 @@ import UserNotifications
       localized("Unable to read or save capture region history", "无法读取或保存截图区域历史"),
       localized("Existing history was left in place. ", "已有历史文件已保留。") + errorMessage(error))
   }
+  func showCaptureHistoryError(_ error: Error) {
+    guard !captureHistoryErrorShown else { return }
+    captureHistoryErrorShown = true
+    warning(
+      localized("Unable to read or save screenshot history", "无法读取或保存截图内容历史"),
+      localized("Existing history was left in place. ", "已有历史文件已保留。") + errorMessage(error))
+  }
   func recognize(_ image: CGImage, kind: RecognitionKind) {
     // An interactive CLI capture must stay alive while its result window is open.
     standaloneCapture = false
@@ -724,7 +737,7 @@ import UserNotifications
         (command.raw ? FileHandle.standardError : FileHandle.standardOutput).write(Data(line.utf8))
       }
       let exitStatus = status
-      DispatchQueue.main.async { exit(exitStatus) }
+      Environment.shared.captureHistory.flush { _ in exit(exitStatus) }
       return
     }
     guard let id = command.requestID, UUID(uuidString: id) != nil else { return }
@@ -781,7 +794,7 @@ import UserNotifications
     NSApp.orderFrontStandardAboutPanel(options: [
       .applicationName: "Flameshoter",
       .applicationVersion: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString")
-        as? String ?? "0.3.5",
+        as? String ?? "0.3.6",
       .version: localized(
         "Native Swift / AppKit · Based on Flameshot", "原生 Swift / AppKit · 基于 Flameshot"),
       .credits: NSAttributedString(
