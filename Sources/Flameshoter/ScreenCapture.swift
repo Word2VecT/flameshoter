@@ -170,8 +170,12 @@ enum CaptureError: LocalizedError {
     ]
     do {
       try task.run()
+      (NSApp.delegate as? AppController)?.trackRestart(task)
       NSApp.terminate(nil)
-    } catch { warning(localized("Unable to restart", "无法重新启动"), errorMessage(error)) }
+    } catch {
+      (NSApp.delegate as? AppController)?.cancelRestart()
+      warning(localized("Unable to restart", "无法重新启动"), errorMessage(error))
+    }
   }
   static func repair() {
     let alert = NSAlert()

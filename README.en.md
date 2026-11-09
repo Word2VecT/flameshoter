@@ -27,7 +27,7 @@
 - Record a region with frame rate, delay, audio, pause, preview and trimming; save as MP4, GIF or animated WebP.
 - In-app annotation: pencil, lines, arrows, shapes, text, numbers and redaction.
 - Copy, save, pin and share through the macOS share sheet.
-- Pin clipboard images, GIF and animated WebP, text, colors and files; restore pins closed during the current session.
+- Pin clipboard images, GIF and animated WebP, text, colors and files; restore open and recently closed pins after restarting.
 - Recognize text and QR codes offline in captures and pinned images; select text directly in images.
 - Pick and copy colors in HEX, RGB, HSV and other formats; save as PNG, lossless WebP, PDF, AVIF and more. PNG optimization is optional.
 - English, Simplified Chinese and customizable shortcuts.

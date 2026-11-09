@@ -28,6 +28,7 @@ import VisionKit
     if event.modifierFlags.contains(.command) {
       window.alphaValue = min(
         1, max(0.15, window.alphaValue + (event.scrollingDeltaY > 0 ? 0.05 : -0.05)))
+      if let controller { controller.onChange?(controller) }
       return
     }
     controller?.zoom(event.scrollingDeltaY > 0 ? 1.03 : 1 / 1.03)
@@ -83,15 +84,21 @@ import VisionKit
   ImageAnalysisOverlayViewDelegate
 {
   let image: CGImage
+  let archiveID: UUID
+  let created: Date
+  var closed: Date?
   let imageView = PinImageView()
   var onClose: ((PinWindowController) -> Void)?
+  var onChange: ((PinWindowController) -> Void)?
   var onRecognize: ((CGImage, RecognitionKind) -> Void)?
   private let textOverlay = ImageAnalysisOverlayView()
   private var analysisStarted = false
   private var analysisTask: Task<Void, Never>?
   private let naturalSize: CGSize
-  init(image: CGImage, screen: NSScreen? = NSScreen.main) {
+  init(image: CGImage, screen: NSScreen? = NSScreen.main, id: UUID = UUID(), created: Date = Date()) {
     self.image = image
+    archiveID = id
+    self.created = created
     let scale = screen?.backingScaleFactor ?? 2
     naturalSize = CGSize(width: CGFloat(image.width) / scale, height: CGFloat(image.height) / scale)
     let window = NSWindow(
@@ -187,6 +194,8 @@ import VisionKit
   @objc func recognizeText(_ sender: Any?) { onRecognize?(image, .text) }
   @objc func recognizeQRCode(_ sender: Any?) { onRecognize?(image, .qrCode) }
   @objc func closeImage(_ sender: Any?) { window?.close() }
+  func windowDidMove(_ notification: Notification) { onChange?(self) }
+  func windowDidResize(_ notification: Notification) { onChange?(self) }
   func overlayView(
     _ overlayView: ImageAnalysisOverlayView, shouldBeginAt point: CGPoint,
     forAnalysisType analysisType: ImageAnalysisOverlayView.InteractionTypes

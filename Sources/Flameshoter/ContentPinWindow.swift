@@ -83,13 +83,20 @@ enum ContentPin {
   }
 }
 
-@MainActor final class ContentPinController: NSWindowController, NSWindowDelegate {
+@MainActor final class ContentPinController: NSWindowController, NSWindowDelegate, NSTextViewDelegate {
   var onClose: ((ContentPinController) -> Void)?
+  var onChange: ((ContentPinController, Bool) -> Void)?
   let content: ContentPin
+  let archiveID: UUID
+  let created: Date
+  var closed: Date?
+  private var textEditor: NSTextView?
   private var webPPlayback: WebPPlayback?
 
-  init(content: ContentPin) {
+  init(content: ContentPin, id: UUID = UUID(), created: Date = Date()) {
     self.content = content
+    archiveID = id
+    self.created = created
     let window = NSWindow(
       contentRect: CGRect(x: 0, y: 0, width: 400, height: 240),
       styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false
@@ -111,6 +118,8 @@ enum ContentPin {
       editor.isVerticallyResizable = true
       editor.textContainer?.widthTracksTextView = true
       editor.textStorage?.setAttributedString(text)
+      editor.delegate = self
+      textEditor = editor
       let scroll = NSScrollView()
       scroll.hasVerticalScroller = true
       scroll.documentView = editor
@@ -205,6 +214,28 @@ enum ContentPin {
     }
   }
   @objc func closePin(_ sender: Any?) { window?.close() }
+  func windowDidMove(_ notification: Notification) { onChange?(self, false) }
+  func windowDidResize(_ notification: Notification) { onChange?(self, false) }
+  func textDidChange(_ notification: Notification) { onChange?(self, true) }
+  var archiveKind: ArchivedPin.Kind {
+    switch content {
+    case .text: return .text
+    case .color: return .color
+    case .file: return .file
+    case .animated(_, let type): return type == .gif ? .gif : .webP
+    }
+  }
+  func archivedPayload() throws -> (ArchivedPin.Kind, Data) {
+    switch content {
+    case .text(let original):
+      let text = textEditor?.textStorage.map { NSAttributedString(attributedString: $0) } ?? original
+      let data = try text.data(from: NSRange(location: 0, length: text.length), documentAttributes: [.documentType: NSAttributedString.DocumentType.rtf])
+      return (.text, data)
+    case .color(_, let original): return (.color, Data(original.utf8))
+    case .file(let url): return (.file, Data(url.absoluteString.utf8))
+    case .animated(let data, let type): return (type == .gif ? .gif : .webP, data)
+    }
+  }
   func windowWillClose(_ notification: Notification) {
     webPPlayback?.stop()
     onClose?(self)

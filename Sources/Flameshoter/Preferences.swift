@@ -313,7 +313,8 @@ import UserNotifications
         integer("undoLimit", "Undo history limit (0 = unlimited)", "撤销历史上限（0 为不限）", 0...999),
         heading("Pinned captures", "置顶截图"),
         boolean("antialiasingPinZoom", "Smooth pinned image zoom", "平滑缩放置顶截图"),
-        integer("pinHistoryLimit", "Closed pins kept during this session", "本次运行保留的已关闭贴图", 0...200),
+        boolean("restoreOpenPins", "Restore open pins on launch", "启动时恢复未关闭的贴图"),
+        integer("pinHistoryLimit", "Closed pins retained", "保留的已关闭贴图数量", 0...99999),
         ActionButton(localized("Screen Recording permissions…", "屏幕录制权限…")) {
           Permissions.openSettings()
         },

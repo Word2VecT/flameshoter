@@ -12,8 +12,21 @@ import UserNotifications
   private var contentPins: [ContentPinController] = []
   private enum ClosedPin {
     case image(PinWindowController), content(ContentPinController)
+    var archiveID: UUID {
+      switch self { case .image(let pin): return pin.archiveID; case .content(let pin): return pin.archiveID }
+    }
   }
   private var closedPins: [ClosedPin] = []
+  private var pendingPinUpdates: [UUID: Task<Void, Never>] = [:]
+  private var dirtyPinText: Set<UUID> = []
+  private var pinArchiveErrorShown = false
+  private var pinArchiveFailure: Error?
+  private var terminating = false
+  private lazy var pinArchive = PinArchive(
+    directory: Environment.shared.settings.url.deletingLastPathComponent().appendingPathComponent("Pins", isDirectory: true),
+    onError: { [weak self] error in
+      Task { @MainActor [weak self] in self?.showPinArchiveError(error) }
+    })
   private var recognitionWindows: [RecognitionWindowController] = []
   private var observers: [NSObjectProtocol] = []
   private var commandObserver: NSObjectProtocol?
@@ -22,6 +35,7 @@ import UserNotifications
   private let restorePinHotkey = GlobalHotkey(identifier: 3)
   private var capturePending = false
   private var preparingRestart = false
+  private var restartTask: Process?
   private var standaloneCapture: Bool
   private var canUseGlobalHotkeys: Bool {
     let env = ProcessInfo.processInfo.environment
@@ -77,6 +91,7 @@ import UserNotifications
     } else {
       UserDefaults.standard.removeObject(forKey: "AppleLanguages")
     }
+    restorePinHistory()
     if let command = initialCommand { handle(command) }
     if Environment.shared.preferences.bool("showStartupLaunchMessage") {
       notify(
@@ -101,6 +116,7 @@ import UserNotifications
     return false
   }
   func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+    if terminating { return .terminateLater }
     if recordingPreventsExit() { return .terminateCancel }
     if !preparingRestart
       && sessions.contains(where: { !$0.active.canvas.document.annotations.isEmpty }),
@@ -112,7 +128,35 @@ import UserNotifications
         return .terminateCancel
       }
     }
-    return .terminateNow
+    terminating = true
+    for task in pendingPinUpdates.values { task.cancel() }
+    pendingPinUpdates.removeAll()
+    dirtyPinText.removeAll()
+    for pin in pins { persist(pin) }
+    for pin in contentPins { persist(pin, includeText: true) }
+    for pin in closedPins {
+      switch pin { case .image(let controller): persist(controller); case .content(let controller): persist(controller, includeText: true) }
+    }
+    pinArchive.flush { [weak self] result in
+      Task { @MainActor [weak self] in
+        if case .success = result, self?.pinArchiveFailure == nil {
+          NSApp.reply(toApplicationShouldTerminate: true)
+        } else {
+          let alert = NSAlert()
+          alert.messageText = localized("Pin history could not be saved", "贴图历史保存失败")
+          alert.informativeText = localized(
+            "Save important pins separately before quitting, or continue and discard unsaved history.",
+            "退出前请另存重要贴图；继续退出可能丢失未保存的贴图历史。")
+          alert.addButton(withTitle: localized("Keep using Flameshoter", "继续使用"))
+          alert.addButton(withTitle: localized("Quit anyway", "仍然退出"))
+          let shouldQuit = alert.runModal() == .alertSecondButtonReturn
+          self?.terminating = shouldQuit
+          if !shouldQuit { self?.cancelRestart() }
+          NSApp.reply(toApplicationShouldTerminate: shouldQuit)
+        }
+      }
+    }
+    return .terminateLater
   }
   func applicationWillTerminate(_ notification: Notification) {
     if let commandObserver {
@@ -134,6 +178,12 @@ import UserNotifications
     preparingRestart = true
     for session in Array(sessions) { session.close(cancelled: true) }
     return true
+  }
+  func trackRestart(_ task: Process) { restartTask = task }
+  func cancelRestart() {
+    if restartTask?.isRunning == true { restartTask?.terminate() }
+    restartTask = nil
+    preparingRestart = false
   }
   private func recordingPreventsExit() -> Bool {
     guard sessions.contains(where: { $0.hasUnsavedRecording }) else { return false }
@@ -423,27 +473,50 @@ import UserNotifications
       })
   }
   func pin(_ image: CGImage, screen: NSScreen? = NSScreen.main) {
+    standaloneCapture = false
     let controller = PinWindowController(image: image, screen: screen)
+    configure(controller)
+    pins.append(controller)
+    controller.show()
+    let record = pinRecord(controller)
+    pinArchive.add(record) { try ImageEncoder.data(image) }
+  }
+  private func configure(_ controller: PinWindowController) {
     controller.onClose = { [weak self] closed in
-      guard let self else { return }
+      guard let self, !self.terminating else { return }
+      self.cancelPinUpdate(closed.archiveID)
+      closed.closed = Date()
+      self.persist(closed)
       self.pins.removeAll { $0 === closed }
       self.closedPins.append(.image(closed))
       self.trimPinHistory()
     }
+    controller.onChange = { [weak self] pin in self?.schedulePinUpdate(pin) }
     controller.onRecognize = { [weak self] image, kind in self?.recognize(image, kind: kind) }
-    pins.append(controller)
-    controller.show()
   }
   private func pin(_ content: ContentPin) {
     let controller = ContentPinController(content: content)
+    configure(controller)
+    contentPins.append(controller)
+    controller.show()
+    do {
+      let data = try controller.archivedPayload().1
+      pinArchive.add(pinRecord(controller)) { data }
+    } catch { showPinArchiveError(error) }
+  }
+  private func configure(_ controller: ContentPinController) {
     controller.onClose = { [weak self] closed in
-      guard let self else { return }
+      guard let self, !self.terminating else { return }
+      self.cancelPinUpdate(closed.archiveID)
+      closed.closed = Date()
+      self.persist(closed, includeText: true)
       self.contentPins.removeAll { $0 === closed }
       self.closedPins.append(.content(closed))
       self.trimPinHistory()
     }
-    contentPins.append(controller)
-    controller.show()
+    controller.onChange = { [weak self] pin, contentChanged in
+      self?.schedulePinUpdate(pin, contentChanged: contentChanged)
+    }
   }
   @objc func pinClipboard(_ sender: Any?) {
     let env = ProcessInfo.processInfo.environment
@@ -474,13 +547,110 @@ import UserNotifications
   @objc func restoreClosedPin(_ sender: Any?) {
     guard let last = closedPins.popLast() else { return }
     switch last {
-    case .image(let controller): pins.append(controller); controller.show()
-    case .content(let controller): contentPins.append(controller); controller.show()
+    case .image(let controller):
+      controller.closed = nil; pins.append(controller); controller.show(); persist(controller)
+    case .content(let controller):
+      controller.closed = nil; contentPins.append(controller); controller.show(); persist(controller, includeText: false)
     }
   }
   private func trimPinHistory() {
     let limit = Environment.shared.preferences.integer("pinHistoryLimit")
-    if closedPins.count > limit { closedPins.removeFirst(closedPins.count - limit) }
+    if closedPins.count > limit {
+      let count = closedPins.count - limit
+      let ids = Set(closedPins.prefix(count).map(\.archiveID))
+      closedPins.removeFirst(count)
+      pinArchive.remove(ids)
+    }
+  }
+  private func pinRecord(_ pin: PinWindowController) -> ArchivedPin {
+    PinPersistence.record(id: pin.archiveID, kind: .image, created: pin.created, closed: pin.closed, window: pin.window)
+  }
+  private func pinRecord(_ pin: ContentPinController) -> ArchivedPin {
+    PinPersistence.record(id: pin.archiveID, kind: pin.archiveKind, created: pin.created, closed: pin.closed, window: pin.window)
+  }
+  private func persist(_ pin: PinWindowController) { pinArchive.update(pinRecord(pin)) }
+  private func persist(_ pin: ContentPinController, includeText: Bool) {
+    do {
+      let payload = includeText && pin.archiveKind == .text ? try pin.archivedPayload().1 : nil
+      pinArchive.update(pinRecord(pin), payload: payload)
+    } catch { showPinArchiveError(error) }
+  }
+  private func cancelPinUpdate(_ id: UUID) {
+    pendingPinUpdates.removeValue(forKey: id)?.cancel()
+    dirtyPinText.remove(id)
+  }
+  private func schedulePinUpdate(_ pin: PinWindowController) {
+    guard !terminating else { return }
+    let id = pin.archiveID
+    pendingPinUpdates[id]?.cancel()
+    pendingPinUpdates[id] = Task { [weak self, weak pin] in
+      try? await Task.sleep(for: .milliseconds(350))
+      guard !Task.isCancelled, let self, let pin else { return }
+      self.pendingPinUpdates.removeValue(forKey: id)
+      self.persist(pin)
+    }
+  }
+  private func schedulePinUpdate(_ pin: ContentPinController, contentChanged: Bool) {
+    guard !terminating else { return }
+    let id = pin.archiveID
+    if contentChanged { dirtyPinText.insert(id) }
+    pendingPinUpdates[id]?.cancel()
+    pendingPinUpdates[id] = Task { [weak self, weak pin] in
+      try? await Task.sleep(for: .milliseconds(350))
+      guard !Task.isCancelled, let self, let pin else { return }
+      self.pendingPinUpdates.removeValue(forKey: id)
+      self.persist(pin, includeText: self.dirtyPinText.remove(id) != nil)
+    }
+  }
+  private func restorePinHistory() {
+    pinArchive.load { [weak self] result in
+      Task { @MainActor [weak self] in
+        guard let self, !self.terminating else { return }
+        switch result {
+        case .failure(let error): self.showPinArchiveError(error)
+        case .success(let entries):
+          var restoredClosed: [ClosedPin] = []
+          let keepOpen = Environment.shared.preferences.bool("restoreOpenPins")
+          let ordered = entries.sorted {
+            ($0.record.closed ?? (keepOpen ? .distantPast : .distantFuture))
+              < ($1.record.closed ?? (keepOpen ? .distantPast : .distantFuture))
+          }
+          for entry in ordered {
+            let record = entry.record
+            let reopen = record.closed == nil && keepOpen
+            let closed = record.closed ?? (reopen ? nil : Date())
+            do {
+              if record.kind == .image {
+                let pin = PinWindowController(image: try PinPersistence.image(entry.data), id: record.id, created: record.created)
+                pin.closed = closed
+                self.configure(pin)
+                PinPersistence.restoreWindow(pin.window, from: record)
+                if reopen { self.pins.append(pin); pin.show() } else { restoredClosed.append(.image(pin)) }
+                if record.closed == nil && !reopen { self.persist(pin) }
+              } else {
+                let content = try PinPersistence.content(record.kind, data: entry.data)
+                let pin = ContentPinController(content: content, id: record.id, created: record.created)
+                pin.closed = closed
+                self.configure(pin)
+                PinPersistence.restoreWindow(pin.window, from: record)
+                if reopen { self.contentPins.append(pin); pin.show() } else { restoredClosed.append(.content(pin)) }
+                if record.closed == nil && !reopen { self.persist(pin, includeText: false) }
+              }
+            } catch { self.showPinArchiveError(error) }
+          }
+          self.closedPins.insert(contentsOf: restoredClosed, at: 0)
+          self.trimPinHistory()
+        }
+      }
+    }
+  }
+  private func showPinArchiveError(_ error: Error) {
+    pinArchiveFailure = error
+    guard !pinArchiveErrorShown, !terminating else { return }
+    pinArchiveErrorShown = true
+    warning(
+      localized("Unable to save or restore pin history", "无法保存或恢复贴图历史"),
+      localized("Existing history was left in place. ", "已有历史文件已保留。") + errorMessage(error))
   }
   func recognize(_ image: CGImage, kind: RecognitionKind) {
     // An interactive CLI capture must stay alive while its result window is open.
@@ -568,7 +738,7 @@ import UserNotifications
     NSApp.orderFrontStandardAboutPanel(options: [
       .applicationName: "Flameshoter",
       .applicationVersion: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString")
-        as? String ?? "0.3.3",
+        as? String ?? "0.3.4",
       .version: localized(
         "Native Swift / AppKit · Based on Flameshot", "原生 Swift / AppKit · 基于 Flameshot"),
       .credits: NSAttributedString(
