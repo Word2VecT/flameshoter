@@ -132,3 +132,46 @@ private func zipEntry(_ url: URL, _ entry: String) throws -> String {
   #expect(updated.shortcut("TYPE_COPY") == Shortcut(12, [.shift]))
   #expect(updated.shortcut(Tool.recognizeTable.legacyName) == nil)
 }
+
+@Test func tableSortingMovesWholeRowsAndKeepsHeader() throws {
+  let table = RecognizedTable(rowCount: 4, columnCount: 3, cells: [
+    .init(rows: 0...0, columns: 0...1, text: "商品"),
+    .init(rows: 0...0, columns: 2...2, text: "价格"),
+    .init(rows: 1...1, columns: 0...0, text: "A"),
+    .init(rows: 1...1, columns: 2...2, text: "1,200.50"),
+    .init(rows: 2...2, columns: 0...0, text: "B"),
+    .init(rows: 2...2, columns: 2...2, text: "20"),
+    .init(rows: 3...3, columns: 0...0, text: "C"),
+    .init(rows: 3...3, columns: 2...2, text: "3"),
+  ])
+  let sorted = try #require(table.sorted(column: 2, ascending: true, keepHeader: true))
+  #expect((0..<4).map { sorted.value(row: $0, column: 0) } == ["商品", "C", "B", "A"])
+  #expect(sorted.cells.contains { $0.rows == 0...0 && $0.columns == 0...1 && $0.text == "商品" })
+  let descending = try #require(table.sorted(column: 2, ascending: false, keepHeader: true))
+  #expect((1..<4).map { descending.value(row: $0, column: 0) } == ["A", "B", "C"])
+  var mergedRows = table
+  mergedRows.cells.append(.init(rows: 1...2, columns: 1...1, text: "合并"))
+  #expect(mergedRows.sorted(column: 2, ascending: true, keepHeader: true) == nil)
+}
+
+@Test func tableRowAndColumnChangesKeepMergedRangesConsistent() throws {
+  var table = RecognizedTable(rowCount: 3, columnCount: 3, cells: [
+    .init(rows: 0...0, columns: 0...0, text: "Header"),
+    .init(rows: 1...2, columns: 1...2, text: "Merged"),
+  ])
+  table.insert(2, rows: true)
+  table.insert(2, rows: false)
+  #expect(table.rowCount == 4 && table.columnCount == 4)
+  #expect(table.cells.contains { $0.text == "Merged" && $0.rows == 1...3 && $0.columns == 1...3 })
+  table.remove(1, rows: true)
+  table.remove(1, rows: false)
+  #expect(table.rowCount == 3 && table.columnCount == 3)
+  #expect(table.cells.contains { $0.text == "Merged" && $0.rows == 1...2 && $0.columns == 1...2 })
+  table.split(row: 2, column: 2)
+  #expect(table.cells.contains { $0.text == "Merged" && $0.rows == 1...1 && $0.columns == 1...1 })
+  #expect(table.isEditable(row: 2, column: 2))
+  table.remove(0, rows: true)
+  #expect(table.rowCount == 2)
+  #expect(table.value(row: 0, column: 1) == "Merged")
+  #expect(!table.cells.contains { $0.text == "Header" })
+}

@@ -11,8 +11,8 @@ struct RecognizedTable: Sendable, Equatable {
     var columns: ClosedRange<Int>
     var text: String
   }
-  let rowCount: Int
-  let columnCount: Int
+  var rowCount: Int
+  var columnCount: Int
   var cells: [Cell]
 
   func cellIndex(row: Int, column: Int) -> Int? {
@@ -32,6 +32,79 @@ struct RecognizedTable: Sendable, Equatable {
     guard isEditable(row: row, column: column) else { return }
     if let index = cellIndex(row: row, column: column) { cells[index].text = value }
     else { cells.append(Cell(rows: row...row, columns: column...column, text: value)) }
+  }
+  var hasMergedCells: Bool { cells.contains { $0.rows.count > 1 || $0.columns.count > 1 } }
+  mutating func insert(_ index: Int, rows: Bool) {
+    cells = cells.map { original in
+      var cell = original
+      let range = rows ? cell.rows : cell.columns
+      let updated = index <= range.lowerBound ? (range.lowerBound + 1)...(range.upperBound + 1)
+        : index <= range.upperBound ? range.lowerBound...(range.upperBound + 1) : range
+      if rows { cell.rows = updated } else { cell.columns = updated }
+      return cell
+    }
+    if rows { rowCount += 1 } else { columnCount += 1 }
+  }
+  mutating func remove(_ index: Int, rows: Bool) {
+    cells = cells.compactMap { original in
+      var cell = original
+      let range = rows ? cell.rows : cell.columns
+      if range.contains(index), range.count == 1 { return nil }
+      let updated = index < range.lowerBound ? (range.lowerBound - 1)...(range.upperBound - 1)
+        : range.contains(index) ? range.lowerBound...(range.upperBound - 1) : range
+      if rows { cell.rows = updated } else { cell.columns = updated }
+      return cell
+    }
+    if rows { rowCount -= 1 } else { columnCount -= 1 }
+  }
+  mutating func split(row: Int, column: Int) {
+    guard let index = cellIndex(row: row, column: column) else { return }
+    let cell = cells[index]
+    cells[index].rows = cell.rows.lowerBound...cell.rows.lowerBound
+    cells[index].columns = cell.columns.lowerBound...cell.columns.lowerBound
+  }
+  func sorted(column: Int, ascending: Bool, keepHeader: Bool) -> RecognizedTable? {
+    guard !cells.contains(where: { $0.rows.count > 1 }) else { return nil }
+    let first = keepHeader ? min(1, rowCount) : 0
+    let rows = Array(first..<rowCount)
+    var texts = Array(repeating: "", count: rowCount)
+    for cell in cells where cell.columns.lowerBound == column {
+      texts[cell.rows.lowerBound] = cell.text
+    }
+    let normalized = texts.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+    func number(_ text: String) -> Double? {
+      if let value = Double(text), value.isFinite { return value }
+      let parts = text.split(separator: ".", omittingEmptySubsequences: false)
+      guard parts.count <= 2, parts.count == 1 || (!parts[1].isEmpty && parts[1].utf8.allSatisfy({ (48...57).contains($0) })) else { return nil }
+      let groups = parts[0].split(separator: ",", omittingEmptySubsequences: false)
+      guard groups.count > 1, !groups[0].isEmpty,
+        groups.dropFirst().allSatisfy({ $0.count == 3 && $0.utf8.allSatisfy { (48...57).contains($0) } })
+      else { return nil }
+      return Double(text.replacingOccurrences(of: ",", with: ""))
+    }
+    let numbers = normalized.map(number)
+    let numeric = rows.filter { !normalized[$0].isEmpty }.allSatisfy { numbers[$0] != nil }
+    let order = rows.sorted { left, right in
+      let a = texts[left], b = texts[right]
+      let aEmpty = normalized[left].isEmpty, bEmpty = normalized[right].isEmpty
+      if aEmpty != bEmpty { return !aEmpty }
+      let comparison: ComparisonResult
+      if numeric, let x = numbers[left], let y = numbers[right] {
+        comparison = x < y ? .orderedAscending : (x > y ? .orderedDescending : .orderedSame)
+      } else { comparison = a.localizedStandardCompare(b) }
+      if comparison == .orderedSame { return left < right }
+      return ascending ? comparison == .orderedAscending : comparison == .orderedDescending
+    }
+    var newRow = Dictionary(uniqueKeysWithValues: order.enumerated().map { ($0.element, $0.offset + first) })
+    if first == 1 { newRow[0] = 0 }
+    var result = self
+    result.cells = cells.map { cell in
+      var copy = cell
+      let row = newRow[cell.rows.lowerBound]!
+      copy.rows = row...row
+      return copy
+    }
+    return result
   }
   func delimited(separator: String, fillMerged: Bool = false) -> String {
     var values = Array(repeating: Array(repeating: "", count: columnCount), count: rowCount)
@@ -91,6 +164,20 @@ enum TableExportError: LocalizedError {
     case .create: return "Unable to create the spreadsheet."
     case .library(let message): return message
     }
+  }
+}
+
+private enum TableCellCommand: Int {
+  case insertAbove, insertBelow, removeRow, insertLeft, insertRight, removeColumn, clear, split
+}
+
+@MainActor final class RecognizedTableView: NSTableView {
+  var menuForCell: ((Int, Int) -> NSMenu?)?
+  override func menu(for event: NSEvent) -> NSMenu? {
+    let point = convert(event.locationInWindow, from: nil)
+    let row = row(at: point), column = column(at: point)
+    guard row >= 0, column >= 0 else { return super.menu(for: event) }
+    return menuForCell?(row, column)
   }
 }
 
@@ -165,16 +252,19 @@ enum TableExport {
 {
   private let image: CGImage
   private let imageView = NSImageView()
-  private let tableView = NSTableView()
+  private let tableView = RecognizedTableView()
   private let tablePicker = NSPopUpButton()
   private let status = NSTextField(labelWithString: "")
   private let copyButton = ActionButton("", action: {})
   private let csvButton = ActionButton("", action: {})
   private let excelButton = ActionButton("", action: {})
+  private let headerCheckbox = NSButton(checkboxWithTitle: "", target: nil, action: nil)
+  private let edits = UndoManager()
   private var tables: [RecognizedTable] = []
   private var selected = 0
   private var task: Task<Void, Never>?
   private var closed = false
+  private var changingSort = false
   var onClose: ((TableRecognitionWindowController) -> Void)?
 
   init(image: CGImage) {
@@ -236,11 +326,17 @@ enum TableExport {
     scroll.borderType = .bezelBorder
     tableView.dataSource = self
     tableView.delegate = self
+    tableView.menuForCell = { [weak self] row, column in
+      guard let self, self.tables.indices.contains(self.selected), row < self.tables[self.selected].rowCount,
+        column < self.tables[self.selected].columnCount else { return nil }
+      return self.cellMenu(row: row, column: column)
+    }
     tableView.gridStyleMask = [.solidVerticalGridLineMask, .solidHorizontalGridLineMask]
     tableView.usesAlternatingRowBackgroundColors = true
     tableView.allowsColumnReordering = false
     tableView.rowHeight = 26
     tableView.setAccessibilityLabel(localized("Recognized cells", "识别的单元格"))
+    tableView.setAccessibilityHelp(localized("Click a column header to sort; click again to reverse.", "点击列标题排序，再次点击可反向排序。"))
     scroll.documentView = tableView
     scroll.widthAnchor.constraint(greaterThanOrEqualToConstant: 200).isActive = true
     split.addArrangedSubview(scroll)
@@ -251,11 +347,9 @@ enum TableExport {
     excelButton.title = localized("Save Excel…", "保存 Excel…")
     excelButton.invoke = { [weak self] in self?.saveTable(excel: true) }
     [copyButton, csvButton, excelButton].forEach { $0.isEnabled = false }
-    let hint = NSTextField(labelWithString: localized("Edit merged cells at their top-left corner.", "合并单元格请编辑左上角。"))
-    hint.textColor = .secondaryLabelColor
-    hint.lineBreakMode = .byTruncatingTail
-    hint.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
-    let bottom = NSStackView(views: [hint, NSView(), copyButton, csvButton, excelButton])
+    headerCheckbox.title = localized("First row is a header", "首行为标题")
+    headerCheckbox.toolTip = localized("Keep the first row in place when sorting.", "排序时保留第一行。")
+    let bottom = NSStackView(views: [headerCheckbox, NSView(), copyButton, csvButton, excelButton])
     bottom.orientation = .horizontal
     bottom.alignment = .centerY
     bottom.spacing = 10
@@ -298,9 +392,13 @@ enum TableExport {
   @objc private func tableChanged(_ sender: Any?) {
     window?.makeFirstResponder(nil)
     selected = tablePicker.indexOfSelectedItem
+    edits.removeAllActions()
     showSelectedTable()
   }
   private func showSelectedTable() {
+    changingSort = true
+    tableView.sortDescriptors = []
+    changingSort = false
     for column in tableView.tableColumns { tableView.removeTableColumn(column) }
     guard tables.indices.contains(selected) else {
       status.stringValue = localized("No table found", "未识别到表格")
@@ -314,11 +412,17 @@ enum TableExport {
       item.title = columnName(column)
       item.width = 145
       item.minWidth = 60
+      item.sortDescriptorPrototype = NSSortDescriptor(key: String(column), ascending: true)
       tableView.addTableColumn(item)
     }
-    status.stringValue = localized("Recognized on this Mac", "已在本机识别") + " · \(table.rowCount) × \(table.columnCount)"
+    updateDimensions()
     [copyButton, csvButton, excelButton].forEach { $0.isEnabled = true }
     tableView.reloadData()
+  }
+  private func updateDimensions() {
+    guard tables.indices.contains(selected) else { return }
+    let table = tables[selected]
+    status.stringValue = localized("Recognized on this Mac", "已在本机识别") + " · \(table.rowCount) × \(table.columnCount)"
   }
   private func columnName(_ index: Int) -> String {
     var number = index + 1, name = ""
@@ -341,8 +445,13 @@ enum TableExport {
     field.stringValue = tables[selected].value(row: row, column: column)
     field.isEditable = tables[selected].isEditable(row: row, column: column)
     field.isSelectable = field.isEditable
+    if !field.isEditable {
+      field.toolTip = localized("Edit the top-left cell of this merged range.", "合并单元格请编辑左上角。")
+    }
     field.tag = column
     field.delegate = self
+    field.menu = cellMenu(row: row, column: column)
+    view.menu = field.menu
     field.setAccessibilityLabel(localized("Row", "第") + " \(row + 1) " + localized("column", "行，第") + " \(column + 1) " + localized("cell", "列"))
     field.translatesAutoresizingMaskIntoConstraints = false
     view.addSubview(field)
@@ -358,7 +467,88 @@ enum TableExport {
     guard let field = notification.object as? NSTextField, tables.indices.contains(selected) else { return }
     let row = tableView.row(for: field), column = field.tag
     guard row >= 0, row < tables[selected].rowCount, column >= 0, column < tables[selected].columnCount else { return }
-    tables[selected].setValue(field.stringValue, row: row, column: column)
+    var table = tables[selected]
+    table.setValue(field.stringValue, row: row, column: column)
+    updateTable(table, index: selected, name: localized("Edit cell", "编辑单元格"), reload: false)
+  }
+  private func cellMenu(row: Int, column: Int) -> NSMenu {
+    let menu = NSMenu()
+    menu.autoenablesItems = false
+    let table = tables[selected]
+    let merged = table.cellIndex(row: row, column: column).map {
+      table.cells[$0].rows.count > 1 || table.cells[$0].columns.count > 1
+    } ?? false
+    let commands: [(String, TableCellCommand, Bool)] = [
+      (localized("Insert row above", "在上方插入行"), .insertAbove, true),
+      (localized("Insert row below", "在下方插入行"), .insertBelow, true),
+      (localized("Delete row", "删除行"), .removeRow, table.rowCount > 1),
+      (localized("Insert column left", "在左侧插入列"), .insertLeft, true),
+      (localized("Insert column right", "在右侧插入列"), .insertRight, true),
+      (localized("Delete column", "删除列"), .removeColumn, table.columnCount > 1),
+      (localized("Clear cell", "清空单元格"), .clear, true),
+      (localized("Split merged cell", "拆分合并单元格"), .split, merged),
+    ]
+    for (title, command, enabled) in commands {
+      let item = NSMenuItem(title: title, action: #selector(editTable(_:)), keyEquivalent: "")
+      item.target = self
+      item.representedObject = [row, column, command.rawValue]
+      item.isEnabled = enabled
+      menu.addItem(item)
+    }
+    return menu
+  }
+  @objc private func editTable(_ sender: NSMenuItem) {
+    window?.makeFirstResponder(nil)
+    guard tables.indices.contains(selected), let position = sender.representedObject as? [Int],
+      position.count == 3, let command = TableCellCommand(rawValue: position[2]) else { return }
+    let row = position[0], column = position[1]
+    var table = tables[selected]
+    guard row < table.rowCount, column < table.columnCount else { return }
+    switch command {
+    case .insertAbove: table.insert(row, rows: true)
+    case .insertBelow: table.insert(row + 1, rows: true)
+    case .removeRow: if table.rowCount > 1 { table.remove(row, rows: true) }
+    case .insertLeft: table.insert(column, rows: false)
+    case .insertRight: table.insert(column + 1, rows: false)
+    case .removeColumn: if table.columnCount > 1 { table.remove(column, rows: false) }
+    case .clear:
+      if let index = table.cellIndex(row: row, column: column) { table.cells[index].text = "" }
+    case .split: table.split(row: row, column: column)
+    }
+    updateTable(table, index: selected, name: sender.title)
+  }
+  func windowWillReturnUndoManager(_ window: NSWindow) -> UndoManager? { edits }
+  private func updateTable(_ value: RecognizedTable, index: Int, name: String, reload: Bool = true) {
+    guard tables.indices.contains(index), tables[index] != value else { return }
+    let previous = tables[index]
+    edits.registerUndo(withTarget: self) { target in target.updateTable(previous, index: index, name: name) }
+    edits.setActionName(name)
+    tables[index] = value
+    if index == selected { updateDimensions() }
+    if reload, index == selected, previous.columnCount != value.columnCount {
+      showSelectedTable()
+    } else if reload, index == selected {
+      changingSort = true
+      tableView.sortDescriptors = []
+      changingSort = false
+      tableView.reloadData()
+    }
+  }
+  func tableView(_ tableView: NSTableView, sortDescriptorsDidChange oldDescriptors: [NSSortDescriptor]) {
+    guard !changingSort, tables.indices.contains(selected), let sort = tableView.sortDescriptors.first,
+      let key = sort.key, let column = Int(key), column < tables[selected].columnCount else { return }
+    window?.makeFirstResponder(nil)
+    guard let sorted = tables[selected].sorted(column: column, ascending: sort.ascending,
+                                               keepHeader: headerCheckbox.state == .on) else {
+      changingSort = true
+      tableView.sortDescriptors = oldDescriptors
+      changingSort = false
+      warning(localized("Cannot sort merged rows", "无法排序跨行合并的表格"),
+        localized("Split the merged cells before sorting.", "请先拆分跨行合并的单元格。"), window: window)
+      return
+    }
+    updateTable(sorted, index: selected, name: localized("Sort table", "排序表格"), reload: false)
+    tableView.reloadData()
   }
   private func copyTable() {
     window?.makeFirstResponder(nil)
@@ -372,13 +562,19 @@ enum TableExport {
     let panel = NSSavePanel()
     panel.nameFieldStringValue = localized("Recognized table", "识别的表格") + (excel ? ".xlsx" : ".csv")
     panel.allowedContentTypes = [excel ? UTType(filenameExtension: "xlsx")! : .commaSeparatedText]
+    let fillMerged = NSButton(checkboxWithTitle: localized("Fill merged cells", "填充合并单元格"), target: nil, action: nil)
+    if !excel, tables[selected].hasMergedCells {
+      fillMerged.toolTip = localized("CSV has no merged cells; repeat their content in each cell.", "CSV 不支持合并单元格，可将内容填入每一格。")
+      panel.accessoryView = fillMerged
+    }
     panel.beginSheetModal(for: window) { [weak self] response in
       guard response == .OK, let url = panel.url, let self, self.tables.indices.contains(self.selected) else { return }
       let table = self.tables[self.selected]
+      let fill = fillMerged.state == .on
       Task { [weak self] in
         do {
           let data = try await Task.detached(priority: .userInitiated) {
-            try excel ? TableExport.xlsx(table) : Data(("\u{feff}" + table.delimited(separator: ",")).utf8)
+            try excel ? TableExport.xlsx(table) : Data(("\u{feff}" + table.delimited(separator: ",", fillMerged: fill)).utf8)
           }.value
           try data.write(to: url, options: .atomic)
         } catch { warning(localized("Unable to save table", "无法保存表格"), errorMessage(error), window: self?.window) }

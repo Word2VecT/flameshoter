@@ -33,7 +33,7 @@
 - Pin clipboard images, GIF and animated WebP, text, colors and files; restore open and recently closed pins after restarting.
 - Recognize text and QR codes offline in captures and pinned images; select text directly in images.
 - Translate screenshots or pinned images on your Mac, edit the original and translated text, and create a translated image. Some languages require an initial system download.
-- Recognize tables in screenshots or pinned images on your Mac, edit cells, and save CSV or Excel files with recognized merged cells.
+- Recognize tables in screenshots or pinned images on your Mac, edit cells, sort and adjust rows and columns, and save CSV or Excel files with recognized merged cells.
 - Pick and copy colors in HEX, RGB, HSV and other formats; save as PNG, lossless WebP, PDF, AVIF and more. PNG optimization is optional.
 - English, Simplified Chinese and customizable shortcuts.
 - Native Apple Liquid Glass interface.
