@@ -69,7 +69,8 @@ import FlameshoterCore
     inspectorButton.toolTip = localized("Tool settings", "工具设置")
     inspectorButton.setAccessibilityLabel(localized("Tool settings", "工具设置"))
     super.init()
-    root.spacing = 8
+    // Let neighboring capture tools share a continuous glass surface at their existing positions.
+    root.spacing = hostView == nil ? CGFloat(buttonSize) * 1.5 : 8
     root.contentView = content
     (hostView ?? canvas).addSubview(root)
     root.setAccessibilityLabel(localized("Annotation toolbar", "标注工具栏"))

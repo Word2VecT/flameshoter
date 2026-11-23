@@ -20,14 +20,21 @@ import Testing
     backing: .buffered, defer: false)
   window.isReleasedWhenClosed = false
   window.contentView = canvas
-  canvas.setSelection(CGRect(x: 100, y: 100, width: 400, height: 250))
+  let selection = CGRect(x: 100, y: 100, width: 400, height: 250)
+  canvas.setSelection(selection)
+  window.layoutIfNeeded()
   #expect(canvas.selectionGlass.style == .clear)
   #expect(canvas.frost.material == .fullScreenUI)
   #expect(canvas.frost.blendingMode == .withinWindow)
   #expect(canvas.selectionGlass.hitTest(CGPoint(x: 10, y: 10)) == nil)
   #expect(canvas.frost.hitTest(CGPoint(x: 10, y: 10)) == nil)
   #expect(canvas.selectedImage.image != nil)
-  #expect(canvas.dimensions.superview === canvas.glassContent)
+  #expect(canvas.selectionGlass.frame.contains(selection))
+  #expect(canvas.selectionGlass.frame.width > selection.width)
+  #expect(canvas.selectionGlass.cornerRadius > 0)
+  #expect(canvas.convert(canvas.imageClip.bounds, from: canvas.imageClip) == selection)
+  #expect(canvas.dimensions.isDescendant(of: canvas.dimensionsGlass))
+  #expect(canvas.dimensionsGlass.hitTest(.zero) == nil)
   let toolbar = CaptureToolbar(canvas: canvas)
   toolbar.refresh()
   #expect(toolbar.root.frame.width > 300)
@@ -319,6 +326,7 @@ import Testing
   ] {
     canvas.setSelection(CGRect(origin: CGPoint(x: 100, y: 100), size: size))
     canvas.resetCursorRects()
+    #expect(canvas.imageClip.frame.size == size)
     for frame in [canvas.imageClip.frame, canvas.dimensions.frame] {
       #expect(frame.origin.x.isFinite && frame.origin.y.isFinite)
       #expect(frame.size.width.isFinite && frame.size.height.isFinite)

@@ -54,6 +54,7 @@ import FlameshoterCore
   let drawing = AnnotationLayer()
   let selectedImage = PassiveImageView()
   let imageClip = PassiveView()
+  let dimensionsGlass = PassiveGlass()
   let dimensions = NSTextField(labelWithString: "")
   let magnifier = PassiveGlass()
   let magnifierImage = PixelImageView()
@@ -116,13 +117,9 @@ import FlameshoterCore
     frost.setAccessibilityElement(false)
     addSubview(frost)
     selectionGlass.style = .clear
-    selectionGlass.cornerRadius = 0
     selectionGlass.contentView = glassContent
     selectionGlass.isHidden = true
     selectionGlass.setAccessibilityElement(false)
-    if !prefs.bool("useSystemAccentColor") {
-      selectionGlass.tintColor = prefs.color("uiColor").color
-    }
     addSubview(selectionGlass)
     glassContent.clipsToBounds = true
     imageClip.wantsLayer = true
@@ -133,12 +130,14 @@ import FlameshoterCore
     imageClip.addSubview(selectedImage)
     glassContent.addSubview(imageClip)
     drawing.canvas = self
-    glassContent.addSubview(drawing)
+    imageClip.addSubview(drawing)
     dimensions.font = .monospacedDigitSystemFont(ofSize: 12, weight: .medium)
     dimensions.textColor = .labelColor
-    dimensions.alignment = .right
+    dimensions.alignment = .center
     dimensions.setAccessibilityLabel(localized("Capture region dimensions", "截图选区尺寸"))
-    glassContent.addSubview(dimensions)
+    dimensionsGlass.style = .regular
+    dimensionsGlass.contentView = padded(dimensions, inset: 4)
+    imageClip.addSubview(dimensionsGlass)
     for _ in 0..<8 {
       let handle = PassiveImageView()
       handle.image = NSImage(systemSymbolName: "circle.fill", accessibilityDescription: nil)
@@ -242,18 +241,21 @@ import FlameshoterCore
       NSWorkspace.shared.accessibilityDisplayShouldReduceTransparency
       ? 1 : CGFloat(prefs.integer("contrastOpacity")) / 255
     selectionGlass.tintColor =
-      prefs.bool("useSystemAccentColor") ? nil : prefs.color("uiColor").color
+      prefs.bool("useSystemAccentColor")
+      ? NSColor.controlAccentColor.withAlphaComponent(0.22) : prefs.color("uiColor").color
     magnifier.cornerRadius = prefs.bool("squareMagnifier") ? 12 : 64
     edits.levelsOfUndo = prefs.integer("undoLimit")
     let r = document.selection ?? suggestedSelection
     selectionGlass.isHidden = r == nil || r!.isEmpty
     if let r, !r.isEmpty {
-      selectionGlass.frame = r
-      glassContent.frame = CGRect(origin: .zero, size: r.size)
-      let inset = min(2, min(r.width, r.height) / 2)
-      imageClip.frame = selectionGlass.bounds.insetBy(dx: inset, dy: inset)
+      // Put the refractive rim outside the crop so even the corner pixels stay visible.
+      let rim = min(6, min(r.width, r.height) / 2)
+      selectionGlass.frame = r.insetBy(dx: -rim, dy: -rim)
+      selectionGlass.cornerRadius = 2 * rim
+      glassContent.frame = selectionGlass.bounds
+      imageClip.frame = CGRect(x: rim, y: rim, width: r.width, height: r.height)
       selectedImage.frame = CGRect(
-        x: -r.minX - inset, y: -r.minY - inset, width: bounds.width, height: bounds.height)
+        x: -r.minX, y: -r.minY, width: bounds.width, height: bounds.height)
       drawing.frame = CGRect(x: -r.minX, y: -r.minY, width: bounds.width, height: bounds.height)
       let points = [
         CGPoint(x: r.minX, y: r.minY), CGPoint(x: r.midX, y: r.minY), CGPoint(x: r.maxX, y: r.minY),
@@ -269,7 +271,7 @@ import FlameshoterCore
       for handle in handles { handle.isHidden = true }
     }
     if r != lastPresentation || frost.maskImage?.size != bounds.size {
-      let aperture = r
+      let aperture = r.map { _ in selectionGlass.frame }
       let size = bounds.size
       let radius = selectionGlass.cornerRadius
       frost.maskImage = NSImage(size: size, flipped: true) { rect in
@@ -285,37 +287,34 @@ import FlameshoterCore
   }
   private func updateDimensions(_ rect: CGRect) {
     let position = prefs.integer("showSelectionGeometry")
-    dimensions.isHidden = position == 0 || rect.width < 110 || rect.height < 32
+    dimensionsGlass.isHidden = position == 0 || rect.width < 110 || rect.height < 32
     dimensionsTimer?.invalidate()
-    guard !dimensions.isHidden else { return }
+    guard !dimensionsGlass.isHidden else { return }
     dimensions.stringValue =
       "\(Int(rect.width*document.scale)) × \(Int(rect.height*document.scale))  ·  \(Int(rect.minX*document.scale)), \(Int(rect.minY*document.scale))"
-    let width = min(280, rect.width - 16)
-    let height: CGFloat = 20
+    let textSize = dimensions.intrinsicContentSize
+    let width = min(ceil(textSize.width) + 18, rect.width - 16)
+    let height = ceil(textSize.height) + 8
     var origin = CGPoint(x: 8, y: rect.height - height - 6)
     switch position {
     case 1:
       origin = CGPoint(x: 8, y: 6)
-      dimensions.alignment = .left
     case 2:
       origin = CGPoint(x: rect.width - width - 8, y: 6)
-      dimensions.alignment = .right
     case 3:
       origin = CGPoint(x: 8, y: rect.height - height - 6)
-      dimensions.alignment = .left
     case 5:
       origin = CGPoint(x: (rect.width - width) / 2, y: (rect.height - height) / 2)
-      dimensions.alignment = .center
     default:
       origin.x = rect.width - width - 8
-      dimensions.alignment = .right
     }
-    dimensions.frame = CGRect(origin: origin, size: CGSize(width: width, height: height))
+    dimensionsGlass.cornerRadius = height / 2
+    dimensionsGlass.frame = CGRect(origin: origin, size: CGSize(width: width, height: height))
     let duration = prefs.integer("showSelectionGeometryHideTime")
     if duration > 0 {
       dimensionsTimer = Timer.scheduledTimer(
         withTimeInterval: Double(duration) / 1000, repeats: false
-      ) { [weak self] _ in MainActor.assumeIsolated { self?.dimensions.isHidden = true } }
+      ) { [weak self] _ in MainActor.assumeIsolated { self?.dimensionsGlass.isHidden = true } }
     }
   }
   func setSelection(_ rect: CGRect?) {

@@ -6,7 +6,7 @@ Flameshoter is a native Swift package. FlameshoterCore owns preferences, legacy 
 
 | Surface | Public Apple implementation |
 | --- | --- |
-| Capture selection | NSGlassEffectView Clear covering the selected rectangle |
+| Capture selection | NSGlassEffectView Clear with an exterior rim around the selected rectangle |
 | Outside selection | NSVisualEffectView FullScreenUI, WithinWindow blending, maskImage aperture |
 | Floating toolbar / static instructions | NSGlassEffectContainerView and NSGlassEffectView Regular |
 | Settings / inspector | NSTabViewController, NSScrollView, NSPopover, NSStackView and standard controls |
@@ -17,9 +17,9 @@ Flameshoter is a native Swift package. FlameshoterCore owns preferences, legacy 
 | Menu bar / menus | NSStatusItem and NSMenu |
 | Global shortcut | Carbon RegisterEventHotKey; no Accessibility permission required |
 
-The selected screenshot is foreground NSImageView content inside Clear glass. Its inset exposes a system-rendered material rim while leaving content legible. Passive material views return nil from hitTest. The outside material samples the frozen canvas, not a changing live desktop. AppKit renders refraction, blur, highlights and appearance; there is no custom glass shader or blur filter.
+The selected screenshot is foreground NSImageView content inside Clear glass. The material extends up to six points beyond the crop and takes a light system accent tint or the user's chosen tint. The rectangular image preview reaches each crop edge. The outside material samples the frozen canvas. AppKit renders refraction, blur, highlights and appearance. Passive material views return nil from hitTest.
 
-The selection glass, image clip and outside-frost aperture have square corners. Dimensions are NSTextField content above the material. System colors and SF Symbols follow appearance. Reduce Transparency forces outside frost to full opacity; custom tint is an explicit preference. The macOS 27 interactive effect is availability-guarded, while macOS 26 uses the default native behavior.
+The outside-frost aperture follows the rounded outer glass edge. The dimensions readout sits in a fitted Regular glass capsule. The capture toolbar uses the system glass container to join adjacent tool backgrounds, with individual button hit areas at their original locations. System colors and SF Symbols follow appearance. Reduce Transparency forces outside frost to full opacity. The macOS 27 interactive effect is availability-guarded, while macOS 26 uses the default native behavior.
 
 ## Capture and annotations
 
