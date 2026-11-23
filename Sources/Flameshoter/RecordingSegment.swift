@@ -18,7 +18,8 @@ import ScreenCaptureKit
   }
 
   static func start(
-    screen: NSScreen, selection: CGRect, options: RecordingOptions, url: URL
+    screen: NSScreen, selection: CGRect, options: RecordingOptions, url: URL,
+    overlayWindowIDs: Set<CGWindowID> = []
   ) async throws -> RecordingSegment {
     let content = try await SCShareableContent.excludingDesktopWindows(
       false, onScreenWindowsOnly: true)
@@ -30,7 +31,8 @@ import ScreenCaptureKit
       $0.processID == ProcessInfo.processInfo.processIdentifier
     }
     let filter = SCContentFilter(
-      display: display, excludingApplications: ownApplications, exceptingWindows: [])
+      display: display, excludingApplications: ownApplications,
+      exceptingWindows: content.windows.filter { overlayWindowIDs.contains($0.windowID) })
     let segment = RecordingSegment(url: url)
     segment.stream = SCStream(
       filter: filter,

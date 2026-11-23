@@ -81,7 +81,8 @@ import FlameshoterCore
   ) {
     self.command = command
     self.app = app
-    self.refreshSource = refreshSource ?? { try await CaptureService.capture(displayIndex: command.display) }
+    self.refreshSource =
+      refreshSource ?? { try await CaptureService.capture(displayIndex: command.display) }
     for (index, frame) in frames.enumerated() {
       let nativeFullscreen = Environment.shared.preferences.bool("useNativeFullscreen")
       let window = CaptureWindow(
@@ -124,10 +125,13 @@ import FlameshoterCore
         guard let self else { return }
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(value, forType: .string)
-        let expectsImage = self.command.copy || self.command.raw || self.command.path != nil
+        let expectsImage =
+          self.command.copy || self.command.raw || self.command.path != nil
           || self.command.pin || self.command.geometry
-        self.app?.respond(self.command, error: expectsImage
-          ? localized("Color copied; capture cancelled.", "已复制颜色，截图已取消。") : nil)
+        self.app?.respond(
+          self.command,
+          error: expectsImage
+            ? localized("Color copied; capture cancelled.", "已复制颜色，截图已取消。") : nil)
         self.close()
       }
       canvas.onRegionSettled = { [weak self] in
@@ -136,8 +140,12 @@ import FlameshoterCore
         self.update(index)
         if self.command.acceptOnSelect { self.perform(.accept, on: index) }
       }
-      canvas.onRegionHistory = { [weak self] direction in self?.cycleRegion(on: index, direction: direction) }
-      canvas.onCaptureHistory = { [weak self] direction in self?.cycleCapture(on: index, direction: direction) }
+      canvas.onRegionHistory = { [weak self] direction in
+        self?.cycleRegion(on: index, direction: direction)
+      }
+      canvas.onCaptureHistory = { [weak self] direction in
+        self?.cycleCapture(on: index, direction: direction)
+      }
       canvas.onRefreshStart = { [weak self] in self?.beginRefreshHold(on: index) ?? false }
       canvas.onRefreshEnd = { [weak self] in self?.finishRefreshHold() }
     }
@@ -260,17 +268,30 @@ import FlameshoterCore
   private func cycleRegion(on index: Int, direction: Int) {
     guard surfaces.indices.contains(index), activate(index) else { return }
     let surface = surfaces[index]
-    guard surface.canvas.historySnapshot == nil else { NSSound.beep(); return }
+    guard surface.canvas.historySnapshot == nil else {
+      NSSound.beep()
+      return
+    }
     let history = Environment.shared.regionHistory
     let limit = Environment.shared.preferences.integer("regionHistoryLimit")
-    guard limit > 0 else { NSSound.beep(); return }
-    if let error = history.loadError { app?.showRegionHistoryError(error); return }
+    guard limit > 0 else {
+      NSSound.beep()
+      return
+    }
+    if let error = history.loadError {
+      app?.showRegionHistoryError(error)
+      return
+    }
     let regions = history.regions(
       display: RegionHistory.displayIdentifier(surface.screen), bounds: surface.canvas.bounds,
       limit: limit)
-    guard !regions.isEmpty else { NSSound.beep(); return }
+    guard !regions.isEmpty else {
+      NSSound.beep()
+      return
+    }
     let current = regionHistoryIndices[index]
-    let target = current.map { ($0 + direction + regions.count) % regions.count }
+    let target =
+      current.map { ($0 + direction + regions.count) % regions.count }
       ?? (direction < 0 ? regions.count - 1 : 0)
     regionHistoryIndices[index] = target
     surface.canvas.setSelection(regions[target])
@@ -278,7 +299,10 @@ import FlameshoterCore
   private func cycleCapture(on index: Int, direction: Int) {
     guard !loadingCaptureHistory, surfaces.indices.contains(index), activate(index) else { return }
     let limit = Environment.shared.preferences.integer("captureHistoryLimit")
-    guard limit > 0 else { NSSound.beep(); return }
+    guard limit > 0 else {
+      NSSound.beep()
+      return
+    }
     loadingCaptureHistory = true
     Task { @MainActor [weak self] in
       guard let self else { return }
@@ -287,14 +311,18 @@ import FlameshoterCore
       let canvas = surface.canvas
       do {
         if self.captureNavigation[index] == nil {
-          let result: Result<[CaptureHistoryEntry], Error> = await withCheckedContinuation { continuation in
+          let result: Result<[CaptureHistoryEntry], Error> = await withCheckedContinuation {
+            continuation in
             Environment.shared.captureHistory.list(
               display: RegionHistory.displayIdentifier(surface.screen), bounds: canvas.bounds,
               scale: canvas.document.scale, limit: limit
             ) { continuation.resume(returning: $0) }
           }
           let entries = try result.get()
-          guard !entries.isEmpty else { NSSound.beep(); return }
+          guard !entries.isEmpty else {
+            NSSound.beep()
+            return
+          }
           guard !self.closing, self.activeIndex == index else { return }
           canvas.commitText()
           self.captureNavigation[index] = CaptureNavigation(
@@ -308,8 +336,11 @@ import FlameshoterCore
         var background: CGImage?
         if target < count {
           let id = navigation.entries[target].id
-          let result: Result<CaptureHistorySnapshot, Error> = await withCheckedContinuation { continuation in
-            Environment.shared.captureHistory.snapshot(id: id) { continuation.resume(returning: $0) }
+          let result: Result<CaptureHistorySnapshot, Error> = await withCheckedContinuation {
+            continuation in
+            Environment.shared.captureHistory.snapshot(id: id) {
+              continuation.resume(returning: $0)
+            }
           }
           snapshot = try result.get()
           let loaded = snapshot!
@@ -322,30 +353,34 @@ import FlameshoterCore
         canvas.commitText()
         if let current = navigation.index {
           navigation.drafts[navigation.entries[current].id] = CaptureDraft(
-            selection: canvas.document.selection, annotations: canvas.document.annotations, edits: canvas.edits)
+            selection: canvas.document.selection, annotations: canvas.document.annotations,
+            edits: canvas.edits)
         } else {
           navigation.live = canvas.document
           navigation.liveEdits = canvas.edits
         }
         if let snapshot, let background {
           var document = CaptureDocument(
-            image: background, logicalSize: navigation.live.logicalSize, undoLimit: navigation.live.undoLimit)
+            image: background, logicalSize: navigation.live.logicalSize,
+            undoLimit: navigation.live.undoLimit)
           if let draft = navigation.drafts[snapshot.entry.id] {
             document.selection = draft.selection
             document.replaceAnnotations(draft.annotations, recordingUndo: false)
           } else {
             document.selection = snapshot.entry.rectangle
             let origin = snapshot.entry.rectangle.origin
-            document.replaceAnnotations(snapshot.entry.annotations.map { original in
-              var annotation = original
-              annotation.move(by: CGSize(width: origin.x, height: origin.y))
-              return annotation
-            }, recordingUndo: false)
+            document.replaceAnnotations(
+              snapshot.entry.annotations.map { original in
+                var annotation = original
+                annotation.move(by: CGSize(width: origin.x, height: origin.y))
+                return annotation
+              }, recordingUndo: false)
           }
           navigation.index = target
           self.captureNavigation[index] = navigation
           surface.window.title = localized("Screenshot history", "截图历史")
-          canvas.replaceDocument(document, history: snapshot, edits: navigation.drafts[snapshot.entry.id]?.edits)
+          canvas.replaceDocument(
+            document, history: snapshot, edits: navigation.drafts[snapshot.entry.id]?.edits)
         } else {
           navigation.index = nil
           self.captureNavigation[index] = navigation
@@ -361,14 +396,18 @@ import FlameshoterCore
     let source = canvas.sourceDocument()
     do {
       let snapshot = try CaptureHistorySnapshot.make(
-        document: source.document, display: RegionHistory.displayIdentifier(active.screen), origin: source.origin)
+        document: source.document, display: RegionHistory.displayIdentifier(active.screen),
+        origin: source.origin)
       Environment.shared.captureHistory.record(snapshot, limit: limit)
     } catch { app?.showCaptureHistoryError(error) }
   }
   private func beginRefreshHold(on index: Int) -> Bool {
     guard !closing, !exporting, sharing == nil, longCapture == nil, recording == nil,
       surfaces.indices.contains(index), activate(index), active.canvas.historySnapshot == nil
-    else { NSSound.beep(); return false }
+    else {
+      NSSound.beep()
+      return false
+    }
     exporting = true
     active.canvas.commitText()
     revealedPresentation = surfaces.map { surface in
@@ -418,9 +457,11 @@ import FlameshoterCore
     let frames = try await refreshSource()
     guard !closing else { return }
     let replacements: [(Surface, CapturedScreen)] = try surfaces.map { surface in
-      guard let frame = frames.first(where: {
-        RegionHistory.displayIdentifier($0.screen) == RegionHistory.displayIdentifier(surface.screen)
-      }), frame.logicalSize == surface.canvas.document.logicalSize,
+      guard
+        let frame = frames.first(where: {
+          RegionHistory.displayIdentifier($0.screen)
+            == RegionHistory.displayIdentifier(surface.screen)
+        }), frame.logicalSize == surface.canvas.document.logicalSize,
         frame.image.width == surface.canvas.document.image.width,
         frame.image.height == surface.canvas.document.image.height
       else { throw CaptureError.display }
@@ -429,7 +470,8 @@ import FlameshoterCore
     for (index, replacement) in replacements.enumerated() {
       let (surface, frame) = replacement
       if surface.canvas.historySnapshot != nil, var navigation = captureNavigation[index] {
-        var live = CaptureDocument(image: frame.image, logicalSize: frame.logicalSize, undoLimit: navigation.live.undoLimit)
+        var live = CaptureDocument(
+          image: frame.image, logicalSize: frame.logicalSize, undoLimit: navigation.live.undoLimit)
         live.selection = navigation.live.selection
         live.replaceAnnotations(navigation.live.annotations, recordingUndo: false)
         navigation.live = live
@@ -519,7 +561,10 @@ import FlameshoterCore
       return
     }
     if tool == .refreshCapture {
-      guard canvas.historySnapshot == nil else { NSSound.beep(); return }
+      guard canvas.historySnapshot == nil else {
+        NSSound.beep()
+        return
+      }
       canvas.commitText()
       do { try await refreshScreens() } catch {
         showRefreshError(error)
@@ -527,11 +572,52 @@ import FlameshoterCore
       return
     }
     guard canvas.document.selection != nil else { return }
-    if tool == .screenRecording {
-      guard !command.copy, !command.raw, command.path == nil, !command.pin, !command.geometry else { return }
-      if !canvas.document.annotations.isEmpty, Environment.shared.preferences.bool("showQuitPrompt") {
+    if tool == .autoRedact {
+      canvas.commitText()
+      canvas.finishPolyline()
+      hide()
+      let options = AutoRedaction.chooseOptions()
+      show()
+      guard let options else { return }
+      let previous = canvas.document.annotations
+      let selection = canvas.document.selection
+      do {
+        canvas.dimensions.stringValue = localized("Recognizing sensitive information…", "正在识别敏感信息…")
+        let image = try canvas.rendered()
+        let pixel = canvas.document.pixelSelection
+        let scale = canvas.document.scale
+        let regions = try await AutoRedaction.regions(image, options: options)
+        guard !closing, canvas.document.selection == selection,
+          canvas.document.annotations == previous
+        else { return }
+        let masks = AutoRedaction.annotations(
+          regions: regions,
+          selection: CGRect(
+            x: pixel.minX / scale, y: pixel.minY / scale,
+            width: pixel.width / scale, height: pixel.height / scale), scale: scale)
+        canvas.setAnnotations(previous + masks, name: toolTitle(.autoRedact))
+        canvas.dimensions.stringValue =
+          masks.isEmpty
+          ? localized("No matching sensitive information found", "未识别到匹配的敏感信息")
+          : localized("Review masks", "请检查遮挡") + " · \(masks.count)"
+      } catch {
         hide()
-        if !confirmDiscard() { show(); return }
+        warning(localized("Unable to redact automatically", "自动打码失败"), errorMessage(error))
+        show()
+      }
+      return
+    }
+    if tool == .screenRecording {
+      guard !command.copy, !command.raw, command.path == nil, !command.pin, !command.geometry else {
+        return
+      }
+      if !canvas.document.annotations.isEmpty, Environment.shared.preferences.bool("showQuitPrompt")
+      {
+        hide()
+        if !confirmDiscard() {
+          show()
+          return
+        }
       }
       let selection = canvas.document.selection!
       hide()
@@ -540,28 +626,38 @@ import FlameshoterCore
       controller.onFinish = { [weak self] saved in
         guard let self else { return }
         self.recording = nil
-        self.app?.respond(self.command, error: saved ? nil : localized("Recording cancelled", "录屏已取消"))
+        self.app?.respond(
+          self.command, error: saved ? nil : localized("Recording cancelled", "录屏已取消"))
         self.close()
       }
       controller.show()
       return
     }
     if tool == .longCapture {
-      guard !command.copy, !command.raw, command.path == nil, !command.pin, !command.geometry else { return }
-      if !canvas.document.annotations.isEmpty, Environment.shared.preferences.bool("showQuitPrompt") {
+      guard !command.copy, !command.raw, command.path == nil, !command.pin, !command.geometry else {
+        return
+      }
+      if !canvas.document.annotations.isEmpty, Environment.shared.preferences.bool("showQuitPrompt")
+      {
         hide()
-        if !confirmDiscard() { show(); return }
+        if !confirmDiscard() {
+          show()
+          return
+        }
       }
       let selection = canvas.document.selection!
       let source = canvas.sourceApplication(at: CGPoint(x: selection.midX, y: selection.midY))
       hide()
-      let controller = LongCaptureSession(screen: active.screen, selection: selection, source: source)
+      let controller = LongCaptureSession(
+        screen: active.screen, selection: selection, source: source)
       longCapture = controller
       controller.onFinish = { [weak self] result in
         guard let self else { return }
         self.longCapture = nil
         switch result {
-        case .cancel: self.close(cancelled: true); return
+        case .cancel:
+          self.close(cancelled: true)
+          return
         case .copy(let image): self.app?.respond(self.command, image: image)
         case .save(let image, let url):
           self.app?.notifySaved(url)
@@ -583,19 +679,27 @@ import FlameshoterCore
       let selection = canvas.document.pixelSelection
       switch tool {
       case .recognizeText, .recognizeQRCode:
-        guard !command.copy, !command.raw, command.path == nil, !command.pin, !command.geometry else {
+        guard !command.copy, !command.raw, command.path == nil, !command.pin, !command.geometry
+        else {
           return
         }
         hide()
         app?.recognize(image, kind: tool == .recognizeText ? .text : .qrCode)
       case .translate:
-        guard !command.copy, !command.raw, command.path == nil, !command.pin, !command.geometry else { return }
+        guard !command.copy, !command.raw, command.path == nil, !command.pin, !command.geometry
+        else { return }
         hide()
         app?.translate(image)
       case .recognizeTable:
-        guard !command.copy, !command.raw, command.path == nil, !command.pin, !command.geometry else { return }
+        guard !command.copy, !command.raw, command.path == nil, !command.pin, !command.geometry
+        else { return }
         hide()
         app?.recognizeTable(image)
+      case .recognizeDocument:
+        guard !command.copy, !command.raw, command.path == nil, !command.pin, !command.geometry
+        else { return }
+        hide()
+        app?.recognize(image, kind: .document)
       case .share:
         share(image)
         return

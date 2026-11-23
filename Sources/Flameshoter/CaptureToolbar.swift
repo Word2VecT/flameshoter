@@ -43,6 +43,7 @@ import FlameshoterCore
 
 @MainActor final class CaptureToolbar: NSObject {
   weak var canvas: CanvasView?
+  private weak var hostView: NSView?
   let root = ToolbarGlassContainer()
   private let content = FlippedView()
   private var items: [NSGlassEffectView] = []
@@ -54,25 +55,43 @@ import FlameshoterCore
   private let inspectorButton: ActionButton
   private let popover = NSPopover()
   var isInspectorShown: Bool { popover.isShown }
+  var inspectorWindow: NSWindow? { inspector?.view.window }
   func dismissInspector() { popover.close() }
   private var inspector: ToolInspector?
   private var prefs: Preferences { Environment.shared.preferences }
-  init(canvas: CanvasView, command: NativeCommand = NativeCommand()) {
+  init(
+    canvas: CanvasView, command: NativeCommand = NativeCommand(), availableTools: Set<Tool>? = nil,
+    hostView: NSView? = nil
+  ) {
     self.canvas = canvas
+    self.hostView = hostView ?? canvas
     inspectorButton = ActionButton("", symbol: "slider.horizontal.3", action: {})
     inspectorButton.toolTip = localized("Tool settings", "工具设置")
     inspectorButton.setAccessibilityLabel(localized("Tool settings", "工具设置"))
     super.init()
     root.spacing = 8
     root.contentView = content
-    canvas.addSubview(root)
+    (hostView ?? canvas).addSubview(root)
     root.setAccessibilityLabel(localized("Annotation toolbar", "标注工具栏"))
     inspectorButton.invoke = { [weak self] in self?.toggleInspector() }
     let outputRequested = command.copy || command.raw || command.path != nil || command.pin
-    var excluded: [Tool] = outputRequested
-      ? [.copy, .save, .share, .openWith, .pin, .recognizeText, .recognizeQRCode, .translate, .recognizeTable, .longCapture, .screenRecording] : [.accept]
-    if command.geometry { excluded += [.recognizeText, .recognizeQRCode, .translate, .recognizeTable, .longCapture, .screenRecording] }
-    for tool in Tool.toolbarOrder where prefs.tools.contains(tool) && !excluded.contains(tool) {
+    var excluded: [Tool] =
+      outputRequested
+      ? [
+        .copy, .save, .share, .openWith, .pin, .recognizeText, .recognizeQRCode, .translate,
+        .recognizeTable, .recognizeDocument, .longCapture, .screenRecording,
+      ] : [.accept]
+    if command.geometry {
+      excluded += [
+        .recognizeText, .recognizeQRCode, .translate, .recognizeTable, .recognizeDocument,
+        .longCapture, .screenRecording,
+      ]
+    }
+    if availableTools?.contains(.accept) == true { excluded.removeAll { $0 == .accept } }
+    for tool in Tool.toolbarOrder
+    where prefs.tools.contains(tool) && !excluded.contains(tool)
+      && (availableTools == nil || availableTools!.contains(tool))
+    {
       let button = makeButton(tool)
       root.controls.append(button)
       items.append(toolbarGlass(button))
@@ -150,12 +169,14 @@ import FlameshoterCore
       popover.close()
       return
     }
+    let host = hostView ?? canvas
     let frames = CaptureToolbarLayout.frames(
-      count: items.count, selection: selection, bounds: canvas.bounds, baseSize: buttonSize)
+      count: items.count, selection: host.convert(selection, from: canvas), bounds: host.bounds,
+      baseSize: buttonSize)
     // The original Tool Settings toggle lives at the left screen edge,
     // separate from the tools surrounding the selection.
     let inspectorFrame = CGRect(
-      x: 0, y: (canvas.bounds.height - CGFloat(buttonSize)) / 2,
+      x: 0, y: (host.bounds.height - CGFloat(buttonSize)) / 2,
       width: CGFloat(buttonSize), height: CGFloat(buttonSize))
     var frame = frames.reduce(CGRect.null) { $0.union($1) }
     if inspectorGlass != nil { frame = frame.union(inspectorFrame) }
@@ -183,10 +204,22 @@ import FlameshoterCore
     guard let canvas else { return }
     let controller = ToolInspector(canvas: canvas)
     inspector = controller
+    let visible =
+      (canvas.window?.screen ?? NSScreen.main)?.visibleFrame.size
+      ?? NSSize(width: 800, height: 600)
+    let host = hostView ?? canvas
+    let size = NSSize(
+      width: min(360, max(200, visible.width - 48)),
+      height: min(640, max(160, min(visible.height, host.bounds.height) - 48)))
+    controller.view.setFrameSize(size)
+    controller.preferredContentSize = size
     popover.contentViewController = controller
-    popover.contentSize = NSSize(width: 360, height: min(640, canvas.bounds.height - 48))
+    popover.contentSize = size
     let anchor = inspectorButton.superview == nil ? root : inspectorButton
-    popover.show(relativeTo: anchor.bounds, of: anchor, preferredEdge: .minY)
+    popover.show(
+      relativeTo: anchor.bounds, of: anchor, preferredEdge: host === canvas ? .minY : .maxX)
+    controller.view.window?.level = NSWindow.Level(
+      rawValue: (canvas.window?.level.rawValue ?? 0) + 1)
     NSColorPanel.shared.level = NSWindow.Level(rawValue: (canvas.window?.level.rawValue ?? 0) + 1)
   }
   func hide() {
@@ -209,6 +242,10 @@ import FlameshoterCore
   private let textOptions: NSStackView
   private let family: ActionPopup
   private var updating = false
+  private let effectOptions = NSStackView()
+  private var watermarkField: ActionField!
+  private var effectSlider: ActionSlider!
+  private var effectLabel: NSTextField!
   init(canvas: CanvasView) {
     self.canvas = canvas
     color = ActionColor(
@@ -221,6 +258,42 @@ import FlameshoterCore
     family = ActionPopup(items: families, selected: 0, change: { _ in })
     textOptions = stack([])
     super.init(nibName: nil, bundle: nil)
+    effectOptions.orientation = .vertical
+    effectOptions.alignment = .leading
+    effectOptions.spacing = 8
+    watermarkField = ActionField(Environment.shared.preferences.string("watermarkText")) {
+      [weak self] value in
+      guard let self, !self.updating else { return }
+      Environment.shared.settings.set("watermarkText", value)
+      self.canvas?.applyStyle { $0.text = value }
+    }
+    watermarkField.placeholderString = localized("Watermark text", "水印文字")
+    watermarkField.setAccessibilityLabel(localized("Watermark text", "水印文字"))
+    effectLabel = label("")
+    effectSlider = ActionSlider(60, min: 0, max: 95) { [weak self] value in
+      guard let self, !self.updating, let canvas = self.canvas else { return }
+      let tool = canvas.selectedAnnotation?.tool ?? canvas.tool
+      let key =
+        tool == .magnify
+        ? "magnification" : tool == .watermark ? "watermarkOpacity" : "spotlightOpacity"
+      Environment.shared.settings.set(key, Int(value.rounded()))
+      canvas.applyStyle {
+        if tool == .magnify {
+          $0.magnification = value / 100
+        } else {
+          $0.effectOpacity = value / 100
+        }
+      }
+      self.refresh()
+    }
+    effectOptions.addArrangedSubview(watermarkField)
+    effectOptions.addArrangedSubview(effectLabel)
+    effectOptions.addArrangedSubview(effectSlider)
+    effectOptions.addArrangedSubview(
+      label(
+        localized(
+          "Polyline: click each vertex, double-click or Return to finish; Esc discards the draft.",
+          "折线：逐点点击，双击或回车完成；Esc 放弃当前折线。"), secondary: true))
     color.change = { [weak self] color in
       guard let self, !self.updating else { return }
       Environment.shared.settings.set("drawColor", RGBA(color).hex)
@@ -232,7 +305,11 @@ import FlameshoterCore
       let tool = canvas.selectedAnnotation?.tool ?? canvas.tool ?? .pencil
       Environment.shared.settings.set(tool.sizeKey, Int(value.rounded()))
       canvas.applyStyle {
-        if $0.tool == .text { $0.fontSize = value.rounded() } else { $0.width = value.rounded() }
+        if $0.tool == .text || $0.tool == .watermark {
+          $0.fontSize = value.rounded()
+        } else {
+          $0.width = value.rounded()
+        }
       }
       self.refresh()
     }
@@ -304,6 +381,7 @@ import FlameshoterCore
     column.addArrangedSubview(stack([label(localized("Size", "尺寸")), sizeLabel], vertical: false))
     column.addArrangedSubview(size)
     column.addArrangedSubview(textOptions)
+    column.addArrangedSubview(effectOptions)
     column.addArrangedSubview(
       ActionCheck(
         localized("Fill shapes", "填充图形"), on: Environment.shared.preferences.bool("filledShapes")
@@ -357,13 +435,34 @@ import FlameshoterCore
     color.color = (selected?.color ?? prefs.color("drawColor")).color
     let tool = selected?.tool ?? canvas.tool ?? .pencil
     let value =
-      tool == .text
+      tool == .text || tool == .watermark
       ? selected?.fontSize ?? Double(prefs.integer("drawFontSize"))
       : selected?.width ?? Double(prefs.integer(tool.sizeKey))
     size.maxValue = max(120, value)
     size.doubleValue = value
     sizeLabel.stringValue = String(Int(value))
     textOptions.isHidden = tool != .text
+    effectOptions.isHidden = ![Tool.magnify, .watermark, .spotlight, .polyline].contains(tool)
+    watermarkField.isHidden = tool != .watermark
+    effectSlider.isHidden = tool == .polyline
+    effectLabel.isHidden = tool == .polyline
+    watermarkField.stringValue = selected?.text ?? prefs.string("watermarkText")
+    if tool == .magnify {
+      effectSlider.minValue = 125
+      effectSlider.maxValue = 800
+      effectSlider.doubleValue =
+        (selected?.magnification ?? Double(prefs.integer("magnification")) / 100) * 100
+      effectLabel.stringValue =
+        localized("Magnification", "放大倍数")
+        + String(format: "  %.2f×", effectSlider.doubleValue / 100)
+    } else {
+      effectSlider.minValue = tool == .watermark ? 5 : 0
+      effectSlider.maxValue = tool == .watermark ? 100 : 95
+      effectSlider.doubleValue =
+        (selected?.effectOpacity ?? Double(
+          prefs.integer(tool == .watermark ? "watermarkOpacity" : "spotlightOpacity")) / 100) * 100
+      effectLabel.stringValue = localized("Opacity", "不透明度") + "  \(Int(effectSlider.doubleValue))%"
+    }
     layerIDs = canvas.document.annotations.map(\.id)
     layers.removeAllItems()
     layers.addItem(withTitle: localized("No annotation selected", "未选择标注"))

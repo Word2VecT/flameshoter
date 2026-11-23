@@ -11,7 +11,9 @@ import UserNotifications
   private var pins: [PinWindowController] = []
   private var contentPins: [ContentPinController] = []
   private enum ClosedPin {
-    case image(PinWindowController), content(ContentPinController), archived(ArchivedPin)
+    case image(PinWindowController)
+    case content(ContentPinController)
+    case archived(ArchivedPin)
     var archiveID: UUID {
       switch self {
       case .image(let pin): return pin.archiveID
@@ -29,11 +31,13 @@ import UserNotifications
   private var pinArchiveFailure: Error?
   private var terminating = false
   private lazy var pinArchive = PinArchive(
-    directory: Environment.shared.settings.url.deletingLastPathComponent().appendingPathComponent("Pins", isDirectory: true),
+    directory: Environment.shared.settings.url.deletingLastPathComponent().appendingPathComponent(
+      "Pins", isDirectory: true),
     onError: { [weak self] error in
       Task { @MainActor [weak self] in self?.showPinArchiveError(error) }
     })
   private var recognitionWindows: [RecognitionWindowController] = []
+  private var pinEditors: [PinAnnotationController] = []
   private var translationWindows: [TranslationWindowController] = []
   private var tableWindows: [TableRecognitionWindowController] = []
   private var observers: [NSObjectProtocol] = []
@@ -206,12 +210,16 @@ import UserNotifications
     guard sessions.contains(where: { $0.hasUnsavedRecording }) else { return false }
     warning(
       localized("Recording in progress", "录屏尚未完成"),
-      localized("Stop and save or cancel the recording before quitting or restarting.", "请先停止并保存或取消录屏，再退出或重新启动。"))
+      localized(
+        "Stop and save or cancel the recording before quitting or restarting.",
+        "请先停止并保存或取消录屏，再退出或重新启动。"))
     return true
   }
   func assignGlobalShortcut(_ shortcut: Shortcut?, for name: String = "TAKE_SCREENSHOT") -> Bool {
     guard canUseGlobalHotkeys else { return true }
-    let handler = name == "PIN_CLIPBOARD" ? pinClipboardHotkey : name == "RESTORE_PIN" ? restorePinHotkey : hotkey
+    let handler =
+      name == "PIN_CLIPBOARD"
+      ? pinClipboardHotkey : name == "RESTORE_PIN" ? restorePinHotkey : hotkey
     let old = Environment.shared.preferences.shortcut(name)
     if handler.register(shortcut) == noErr { return true }
     _ = handler.register(old)
@@ -227,8 +235,10 @@ import UserNotifications
     hotkey.invoke = { [weak self] in self?.capture(nil) }
     pinClipboardHotkey.invoke = { [weak self] in self?.pinClipboard(nil) }
     restorePinHotkey.invoke = { [weak self] in self?.restoreClosedPin(nil) }
-    for (name, handler) in [("TAKE_SCREENSHOT", hotkey), ("PIN_CLIPBOARD", pinClipboardHotkey),
-                            ("RESTORE_PIN", restorePinHotkey)] {
+    for (name, handler) in [
+      ("TAKE_SCREENSHOT", hotkey), ("PIN_CLIPBOARD", pinClipboardHotkey),
+      ("RESTORE_PIN", restorePinHotkey),
+    ] {
       if handler.register(Environment.shared.preferences.shortcut(name)) != noErr {
         warning(
           localized("Global shortcut unavailable", "全局快捷键不可用"),
@@ -267,8 +277,12 @@ import UserNotifications
     displayItem.submenu = displays
     menu.addItem(displayItem)
     menu.addItem(.separator())
-    add(menu, localized("Pin clipboard", "置顶剪贴板"), #selector(pinClipboard(_:)), symbol: "pin", shortcut: "PIN_CLIPBOARD")
-    add(menu, localized("Restore last closed pin", "恢复上次关闭的贴图"), #selector(restoreClosedPin(_:)), shortcut: "RESTORE_PIN")
+    add(
+      menu, localized("Pin clipboard", "置顶剪贴板"), #selector(pinClipboard(_:)), symbol: "pin",
+      shortcut: "PIN_CLIPBOARD")
+    add(
+      menu, localized("Restore last closed pin", "恢复上次关闭的贴图"), #selector(restoreClosedPin(_:)),
+      shortcut: "RESTORE_PIN")
     menu.addItem(.separator())
     add(menu, localized("Settings…", "设置…"), #selector(showPreferences(_:)), symbol: "gearshape")
     add(menu, localized("About Flameshoter", "关于 Flameshoter"), #selector(showAbout(_:)))
@@ -323,8 +337,12 @@ import UserNotifications
     fileItem.submenu = file
     root.addItem(fileItem)
     add(file, localized("Capture region", "截取区域"), #selector(capture(_:)), key: "n")
-    add(file, localized("Pin clipboard", "置顶剪贴板"), #selector(pinClipboard(_:)), shortcut: "PIN_CLIPBOARD")
-    add(file, localized("Restore last closed pin", "恢复上次关闭的贴图"), #selector(restoreClosedPin(_:)), shortcut: "RESTORE_PIN")
+    add(
+      file, localized("Pin clipboard", "置顶剪贴板"), #selector(pinClipboard(_:)),
+      shortcut: "PIN_CLIPBOARD")
+    add(
+      file, localized("Restore last closed pin", "恢复上次关闭的贴图"), #selector(restoreClosedPin(_:)),
+      shortcut: "RESTORE_PIN")
     add(file, localized("Demo canvas", "试用标注工具"), #selector(demo(_:)))
     file.addItem(.separator())
     file.addItem(
@@ -512,6 +530,13 @@ import UserNotifications
     controller.onRecognize = { [weak self] image, kind in self?.recognize(image, kind: kind) }
     controller.onTranslate = { [weak self] image in self?.translate(image) }
     controller.onRecognizeTable = { [weak self] image in self?.recognizeTable(image) }
+    controller.onAnnotate = { [weak self] pin in
+      guard let self, !self.pinEditors.contains(where: { $0.pin === pin }) else { return }
+      let editor = PinAnnotationController(pin: pin, app: self)
+      editor.onClose = { [weak self] closed in self?.pinEditors.removeAll { $0 === closed } }
+      self.pinEditors.append(editor)
+      editor.show()
+    }
   }
   private func pin(_ content: ContentPin) {
     let controller = ContentPinController(content: content)
@@ -542,10 +567,13 @@ import UserNotifications
     let board: NSPasteboard
     if env["FLAMESHOTER_TEST_CONFIG"] != nil, let name = env["FLAMESHOTER_TEST_PASTEBOARD"] {
       board = NSPasteboard(name: NSPasteboard.Name(name))
-    } else { board = .general }
+    } else {
+      board = .general
+    }
     guard pinClipboardContents(of: board) else {
-      warning(localized("Nothing to pin", "没有可置顶的内容"),
-              localized("Copy an image, text, color or file first.", "请先复制图片、文字、颜色或文件。"))
+      warning(
+        localized("Nothing to pin", "没有可置顶的内容"),
+        localized("Copy an image, text, color or file first.", "请先复制图片、文字、颜色或文件。"))
       return
     }
   }
@@ -567,9 +595,15 @@ import UserNotifications
     guard let last = closedPins.popLast() else { return }
     switch last {
     case .image(let controller):
-      controller.closed = nil; pins.append(controller); controller.show(); persist(controller)
+      controller.closed = nil
+      pins.append(controller)
+      controller.show()
+      persist(controller)
     case .content(let controller):
-      controller.closed = nil; contentPins.append(controller); controller.show(); persist(controller, includeText: false)
+      controller.closed = nil
+      contentPins.append(controller)
+      controller.show()
+      persist(controller, includeText: false)
     case .archived(let record): restoreArchivedPin(record, reopeningClosed: true)
     }
   }
@@ -583,27 +617,40 @@ import UserNotifications
     }
   }
   private func pinRecord(_ pin: PinWindowController) -> ArchivedPin {
-    PinPersistence.record(id: pin.archiveID, kind: .image, created: pin.created, closed: pin.closed, window: pin.window)
+    var record = PinPersistence.record(
+      id: pin.archiveID, kind: .image, created: pin.created, closed: pin.closed, window: pin.window)
+    record.quarterTurns = pin.quarterTurns
+    record.mirrored = pin.mirrored
+    record.locked = pin.locked
+    return record
   }
   private func pinRecord(_ pin: ContentPinController) -> ArchivedPin {
-    PinPersistence.record(id: pin.archiveID, kind: pin.archiveKind, created: pin.created, closed: pin.closed, window: pin.window)
+    PinPersistence.record(
+      id: pin.archiveID, kind: pin.archiveKind, created: pin.created, closed: pin.closed,
+      window: pin.window)
   }
   private func releaseClosedPinWhenSaved() -> @Sendable (Result<ArchivedPin, Error>) -> Void {
     { [weak self] result in
       guard case .success(let record) = result else { return }
       Task { @MainActor [weak self] in
-        guard let self, let index = self.closedPins.firstIndex(where: { $0.archiveID == record.id }) else { return }
+        guard let self, let index = self.closedPins.firstIndex(where: { $0.archiveID == record.id })
+        else { return }
         self.closedPins[index] = .archived(record)
       }
     }
   }
   private func persist(_ pin: PinWindowController, releaseWhenSaved: Bool = false) {
-    pinArchive.update(pinRecord(pin), completion: releaseWhenSaved ? releaseClosedPinWhenSaved() : nil)
+    pinArchive.update(
+      pinRecord(pin), completion: releaseWhenSaved ? releaseClosedPinWhenSaved() : nil)
   }
-  private func persist(_ pin: ContentPinController, includeText: Bool, releaseWhenSaved: Bool = false) {
+  private func persist(
+    _ pin: ContentPinController, includeText: Bool, releaseWhenSaved: Bool = false
+  ) {
     do {
       let payload = includeText && pin.archiveKind == .text ? try pin.archivedPayload().1 : nil
-      pinArchive.update(pinRecord(pin), payload: payload, completion: releaseWhenSaved ? releaseClosedPinWhenSaved() : nil)
+      pinArchive.update(
+        pinRecord(pin), payload: payload,
+        completion: releaseWhenSaved ? releaseClosedPinWhenSaved() : nil)
     } catch { showPinArchiveError(error) }
   }
   private func cancelPinUpdate(_ id: UUID) {
@@ -650,7 +697,10 @@ import UserNotifications
             if record.closed == nil && keepOpen {
               self.restoreArchivedPin(record, reopeningClosed: false)
             } else {
-              if record.closed == nil { record.closed = Date(); self.pinArchive.update(record) }
+              if record.closed == nil {
+                record.closed = Date()
+                self.pinArchive.update(record)
+              }
               restoredClosed.append(.archived(record))
             }
           }
@@ -668,7 +718,9 @@ import UserNotifications
           let loaded = try result.get()
           let record = loaded.record
           if record.kind == .image {
-            let pin = PinWindowController(image: try PinPersistence.image(loaded.data), id: record.id, created: record.created)
+            let pin = PinWindowController(
+              image: try PinPersistence.image(loaded.data), id: record.id, created: record.created)
+            pin.restoreTransform(from: record)
             PinPersistence.restoreWindow(pin.window, from: record)
             self.configure(pin)
             self.pins.append(pin)
@@ -684,7 +736,10 @@ import UserNotifications
             if reopeningClosed { self.persist(pin, includeText: false) }
           }
         } catch {
-          if reopeningClosed { self.closedPins.append(.archived(original)); self.trimPinHistory() }
+          if reopeningClosed {
+            self.closedPins.append(.archived(original))
+            self.trimPinHistory()
+          }
           self.showPinArchiveError(error)
         }
       }

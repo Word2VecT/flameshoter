@@ -7,10 +7,11 @@ import ScreenCaptureKit
   let image: CGImage
   let screen: NSScreen
   var windows: [SelectionWindow] = []
+  var imageLogicalSize: CGSize?
   var displayFrame: CGRect {
     AutoSelection.displayFrame(screen.frame, primaryTop: NSScreen.screens.first?.frame.maxY ?? 0)
   }
-  var logicalSize: CGSize { screen.frame.size }
+  var logicalSize: CGSize { imageLogicalSize ?? screen.frame.size }
 }
 
 @MainActor enum CaptureService {
@@ -77,11 +78,14 @@ import ScreenCaptureKit
         let local = NSRectFromString(region)
         if !local.isEmpty {
           let global = local.offsetBy(dx: frame.displayFrame.minX, dy: frame.displayFrame.minY)
-          let processID = ProcessInfo.processInfo.environment["FLAMESHOTER_TEST_WINDOW_PID"].flatMap(pid_t.init)
+          let processID =
+            ProcessInfo.processInfo.environment["FLAMESHOTER_TEST_WINDOW_PID"].flatMap(pid_t.init)
             ?? ProcessInfo.processInfo.processIdentifier
-          frame.windows = [SelectionWindow(
-            processID: processID,
-            globalFrame: global, localFrame: local)]
+          frame.windows = [
+            SelectionWindow(
+              processID: processID,
+              globalFrame: global, localFrame: local)
+          ]
         }
       }
       return [frame]

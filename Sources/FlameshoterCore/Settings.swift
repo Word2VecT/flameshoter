@@ -2,7 +2,7 @@
 import AppKit
 
 public struct Preferences: Codable, Equatable, Sendable {
-  public var schemaVersion = 12
+  public var schemaVersion = 13
   public var values: [String: String] = [:]
   public var shortcuts = Shortcut.defaults
   public var unassignedShortcuts: Set<String> = []
@@ -14,11 +14,14 @@ public struct Preferences: Codable, Equatable, Sendable {
     "showStartupLaunchMessage": "false", "autoCloseIdleDaemon": "false",
     "allowMultipleGuiInstances": "false", "showDesktopNotification": "false",
     "showAbortNotification": "false", "showHelp": "true", "showQuitPrompt": "true",
-    "saveLastRegion": "true", "copyOnDoubleClick": "false", "showMagnifier": "false", "captureCursor": "false",
-    "autoSelectionMode": "2", "screenColorFormat": "0", "longCaptureAutoTrim": "false", "regionHistoryLimit": "100", "captureHistoryLimit": "100",
+    "saveLastRegion": "true", "copyOnDoubleClick": "false", "showMagnifier": "false",
+    "captureCursor": "false",
+    "autoSelectionMode": "2", "screenColorFormat": "0", "longCaptureAutoTrim": "false",
+    "regionHistoryLimit": "100", "captureHistoryLimit": "100",
     "squareMagnifier": "false", "showSidePanelButton": "true", "useNativeFullscreen": "false",
     "showSelectionGeometry": "4", "showSelectionGeometryHideTime": "3000", "undoLimit": "100",
-    "antialiasingPinZoom": "true", "pinHistoryLimit": "100", "restoreOpenPins": "true", "useSystemAccentColor": "true", "uiColor": "#007aff",
+    "antialiasingPinZoom": "true", "pinHistoryLimit": "100", "restoreOpenPins": "true",
+    "useSystemAccentColor": "true", "uiColor": "#007aff",
     "contrastUiColor": "#194678", "drawColor": "#ff3b30", "contrastOpacity": "190",
     "predefinedColorPaletteLarge": "false", "savePath": "", "savePathFixed": "false",
     "filenamePattern": "%F_%H-%M-%S", "saveAsFileExtension": "png", "jpegQuality": "75",
@@ -30,6 +33,8 @@ public struct Preferences: Codable, Equatable, Sendable {
     "reverseArrow": "false", "arrowStyle": "0", "insecurePixelate": "false", "lastRegion": "",
     "filledShapes": "false", "textBold": "false", "textItalic": "false", "textUnderline": "false",
     "textStrike": "false", "textAlignment": "0",
+    "watermarkText": "Flameshoter", "watermarkOpacity": "25", "spotlightOpacity": "60",
+    "magnification": "200",
   ]
   public func string(_ key: String) -> String { values[key] ?? Self.defaults[key] ?? "" }
   public func bool(_ key: String) -> Bool {
@@ -222,9 +227,12 @@ public final class SettingsStore {
     }
     if preferences.schemaVersion < 4 {
       let name = "TYPE_COPY_PIXEL_COLOR"
-      if let shortcut = Shortcut.defaults[name], preferences.shortcuts.contains(where: {
-        $0.key != name && !preferences.unassignedShortcuts.contains($0.key) && $0.value == shortcut
-      }) {
+      if let shortcut = Shortcut.defaults[name],
+        preferences.shortcuts.contains(where: {
+          $0.key != name && !preferences.unassignedShortcuts.contains($0.key)
+            && $0.value == shortcut
+        })
+      {
         preferences.unassignedShortcuts.insert(name)
       }
       preferences.schemaVersion = 4
@@ -232,18 +240,24 @@ public final class SettingsStore {
     if preferences.schemaVersion < 5 {
       let tool = Tool.longCapture
       if !preferences.tools.contains(tool) { preferences.tools.append(tool) }
-      if let shortcut = Shortcut.defaults[tool.legacyName], preferences.shortcuts.contains(where: {
-        $0.key != tool.legacyName && !preferences.unassignedShortcuts.contains($0.key) && $0.value == shortcut
-      }) {
+      if let shortcut = Shortcut.defaults[tool.legacyName],
+        preferences.shortcuts.contains(where: {
+          $0.key != tool.legacyName && !preferences.unassignedShortcuts.contains($0.key)
+            && $0.value == shortcut
+        })
+      {
         preferences.unassignedShortcuts.insert(tool.legacyName)
       }
       preferences.schemaVersion = 5
     }
     if preferences.schemaVersion < 6 {
       for name in ["PIN_CLIPBOARD", "RESTORE_PIN"] {
-        if let shortcut = Shortcut.defaults[name], preferences.shortcuts.contains(where: {
-          $0.key != name && !preferences.unassignedShortcuts.contains($0.key) && $0.value == shortcut
-        }) {
+        if let shortcut = Shortcut.defaults[name],
+          preferences.shortcuts.contains(where: {
+            $0.key != name && !preferences.unassignedShortcuts.contains($0.key)
+              && $0.value == shortcut
+          })
+        {
           preferences.unassignedShortcuts.insert(name)
         }
       }
@@ -252,18 +266,24 @@ public final class SettingsStore {
     if preferences.schemaVersion < 7 {
       let tool = Tool.screenRecording
       if !preferences.tools.contains(tool) { preferences.tools.append(tool) }
-      if let shortcut = Shortcut.defaults[tool.legacyName], preferences.shortcuts.contains(where: {
-        $0.key != tool.legacyName && !preferences.unassignedShortcuts.contains($0.key) && $0.value == shortcut
-      }) {
+      if let shortcut = Shortcut.defaults[tool.legacyName],
+        preferences.shortcuts.contains(where: {
+          $0.key != tool.legacyName && !preferences.unassignedShortcuts.contains($0.key)
+            && $0.value == shortcut
+        })
+      {
         preferences.unassignedShortcuts.insert(tool.legacyName)
       }
       preferences.schemaVersion = 7
     }
     if preferences.schemaVersion < 8 {
       for name in ["TYPE_PREVIOUS_REGION", "TYPE_NEXT_REGION"] {
-        if let shortcut = Shortcut.defaults[name], preferences.shortcuts.contains(where: {
-          $0.key != name && !preferences.unassignedShortcuts.contains($0.key) && $0.value == shortcut
-        }) {
+        if let shortcut = Shortcut.defaults[name],
+          preferences.shortcuts.contains(where: {
+            $0.key != name && !preferences.unassignedShortcuts.contains($0.key)
+              && $0.value == shortcut
+          })
+        {
           preferences.unassignedShortcuts.insert(name)
         }
       }
@@ -271,9 +291,12 @@ public final class SettingsStore {
     }
     if preferences.schemaVersion < 9 {
       for name in ["TYPE_PREVIOUS_CAPTURE", "TYPE_NEXT_CAPTURE"] {
-        if let shortcut = Shortcut.defaults[name], preferences.shortcuts.contains(where: {
-          $0.key != name && !preferences.unassignedShortcuts.contains($0.key) && $0.value == shortcut
-        }) {
+        if let shortcut = Shortcut.defaults[name],
+          preferences.shortcuts.contains(where: {
+            $0.key != name && !preferences.unassignedShortcuts.contains($0.key)
+              && $0.value == shortcut
+          })
+        {
           preferences.unassignedShortcuts.insert(name)
         }
       }
@@ -282,9 +305,12 @@ public final class SettingsStore {
     if preferences.schemaVersion < 10 {
       let tool = Tool.refreshCapture
       if !preferences.tools.contains(tool) { preferences.tools.append(tool) }
-      if let shortcut = Shortcut.defaults[tool.legacyName], preferences.shortcuts.contains(where: {
-        $0.key != tool.legacyName && !preferences.unassignedShortcuts.contains($0.key) && $0.value == shortcut
-      }) {
+      if let shortcut = Shortcut.defaults[tool.legacyName],
+        preferences.shortcuts.contains(where: {
+          $0.key != tool.legacyName && !preferences.unassignedShortcuts.contains($0.key)
+            && $0.value == shortcut
+        })
+      {
         preferences.unassignedShortcuts.insert(tool.legacyName)
       }
       preferences.schemaVersion = 10
@@ -292,9 +318,12 @@ public final class SettingsStore {
     if preferences.schemaVersion < 11 {
       let tool = Tool.translate
       if !preferences.tools.contains(tool) { preferences.tools.append(tool) }
-      if let shortcut = Shortcut.defaults[tool.legacyName], preferences.shortcuts.contains(where: {
-        $0.key != tool.legacyName && !preferences.unassignedShortcuts.contains($0.key) && $0.value == shortcut
-      }) {
+      if let shortcut = Shortcut.defaults[tool.legacyName],
+        preferences.shortcuts.contains(where: {
+          $0.key != tool.legacyName && !preferences.unassignedShortcuts.contains($0.key)
+            && $0.value == shortcut
+        })
+      {
         preferences.unassignedShortcuts.insert(tool.legacyName)
       }
       preferences.schemaVersion = 11
@@ -302,12 +331,31 @@ public final class SettingsStore {
     if preferences.schemaVersion < 12 {
       let tool = Tool.recognizeTable
       if !preferences.tools.contains(tool) { preferences.tools.append(tool) }
-      if let shortcut = Shortcut.defaults[tool.legacyName], preferences.shortcuts.contains(where: {
-        $0.key != tool.legacyName && !preferences.unassignedShortcuts.contains($0.key) && $0.value == shortcut
-      }) {
+      if let shortcut = Shortcut.defaults[tool.legacyName],
+        preferences.shortcuts.contains(where: {
+          $0.key != tool.legacyName && !preferences.unassignedShortcuts.contains($0.key)
+            && $0.value == shortcut
+        })
+      {
         preferences.unassignedShortcuts.insert(tool.legacyName)
       }
       preferences.schemaVersion = 12
+    }
+    if preferences.schemaVersion < 13 {
+      for tool in [
+        Tool.spotlight, .polyline, .magnify, .watermark, .autoRedact, .recognizeDocument,
+      ] {
+        if !preferences.tools.contains(tool) { preferences.tools.append(tool) }
+        if let shortcut = Shortcut.defaults[tool.legacyName],
+          preferences.shortcuts.contains(where: {
+            $0.key != tool.legacyName && !preferences.unassignedShortcuts.contains($0.key)
+              && $0.value == shortcut
+          })
+        {
+          preferences.unassignedShortcuts.insert(tool.legacyName)
+        }
+      }
+      preferences.schemaVersion = 13
     }
     return preferences.schemaVersion != previousVersion
   }
@@ -318,6 +366,7 @@ public final class SettingsStore {
       "drawThickness": 1...500, "drawRectangleSize": 1...500, "drawMarkerSize": 1...500,
       "drawFontSize": 1...500, "drawCircleCounterSize": 1...500, "drawPixelateSize": 1...500,
       "arrowStyle": 0...1, "textAlignment": 0...2,
+      "watermarkOpacity": 5...100, "spotlightOpacity": 0...95, "magnification": 125...800,
       "autoSelectionMode": 0...2, "screenColorFormat": 0...5, "pinHistoryLimit": 0...99999,
       "regionHistoryLimit": 0...99999, "captureHistoryLimit": 0...99999,
     ]
@@ -327,7 +376,9 @@ public final class SettingsStore {
     guard ["auto", "en", "zh_CN", "zh-Hans"].contains(p.string("uiLanguage")) else {
       throw SettingsError.invalid("uiLanguage")
     }
-    guard ["png", "jpg", "jpeg", "webp", "tiff", "bmp", "avif", "pdf"].contains(p.string("saveAsFileExtension"))
+    guard
+      ["png", "jpg", "jpeg", "webp", "tiff", "bmp", "avif", "pdf"].contains(
+        p.string("saveAsFileExtension"))
     else { throw SettingsError.invalid("saveAsFileExtension") }
     guard (3...17).contains(p.colors.count) else { throw SettingsError.invalid("colors") }
     for color in p.colors + [p.color("drawColor")] {

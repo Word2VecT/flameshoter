@@ -8,6 +8,7 @@ struct RecordingOptions {
   var showsCursor = true
   var systemAudio = false
   var microphone = false
+  var showMouseClicks = false
 
   func configuration(selection: CGRect, scale: CGFloat) -> SCStreamConfiguration {
     let configuration = SCStreamConfiguration()
@@ -17,6 +18,8 @@ struct RecordingOptions {
     configuration.height = max(2, Int((selection.height * scale).rounded()) / 2 * 2)
     configuration.minimumFrameInterval = CMTime(value: 1, timescale: CMTimeScale(framesPerSecond))
     configuration.showsCursor = showsCursor
+    configuration.showMouseClicks = showMouseClicks
+    configuration.pixelFormat = kCVPixelFormatType_32BGRA
     configuration.capturesAudio = systemAudio
     configuration.captureMicrophone = microphone
     configuration.excludesCurrentProcessAudio = true
@@ -77,12 +80,19 @@ enum RecordingMovie {
 }
 
 enum RecordingError: LocalizedError {
-  case empty, export, microphonePermission
+  case empty, export, microphonePermission, cameraPermission, cameraUnavailable,
+    inputMonitoringPermission
   var errorDescription: String? {
     switch self {
     case .empty: return "No recording frames were captured."
     case .export: return "Unable to prepare the recording."
     case .microphonePermission: return "Microphone access is required to record microphone audio."
+    case .cameraPermission: return "Allow camera access in System Settings, then retry recording."
+    case .cameraUnavailable:
+      return "No available camera was found. Connect a camera or turn off Camera."
+    case .inputMonitoringPermission:
+      return
+        "Allow Input Monitoring for Flameshoter in System Settings, then restart the app to show keyboard shortcuts."
     }
   }
 }

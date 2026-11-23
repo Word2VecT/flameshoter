@@ -22,9 +22,16 @@ import VisionKit
     }
     return self
   }
-  override func mouseDown(with event: NSEvent) { window?.performDrag(with: event) }
+  override func mouseDown(with event: NSEvent) {
+    if event.clickCount == 2 {
+      window?.close()
+      return
+    }
+    if controller?.locked != true { window?.performDrag(with: event) }
+  }
   override func scrollWheel(with event: NSEvent) {
     guard let window else { return }
+    guard controller?.locked != true else { return }
     if event.modifierFlags.contains(.command) {
       window.alphaValue = min(
         1, max(0.15, window.alphaValue + (event.scrollingDeltaY > 0 ? 0.05 : -0.05)))
@@ -34,6 +41,14 @@ import VisionKit
     controller?.zoom(event.scrollingDeltaY > 0 ? 1.03 : 1 / 1.03)
   }
   override func keyDown(with event: NSEvent) {
+    if event.keyCode == 37, event.modifierFlags.intersection(Shortcut.relevant).isEmpty {
+      controller?.toggleLock(nil)
+      return
+    }
+    if event.keyCode == 49, event.modifierFlags.intersection(Shortcut.relevant).isEmpty {
+      controller?.annotate(nil)
+      return
+    }
     if event.keyCode == 53
       || Environment.shared.preferences.shortcut("TYPE_CLOSE_ACTIVE_PIN_WINDOW")?.matches(event)
         == true
@@ -41,11 +56,15 @@ import VisionKit
       window?.close()
       return
     }
-    if Environment.shared.preferences.shortcut(Tool.recognizeText.legacyName)?.matches(event) == true {
+    if Environment.shared.preferences.shortcut(Tool.recognizeText.legacyName)?.matches(event)
+      == true
+    {
       controller?.recognizeText(nil)
       return
     }
-    if Environment.shared.preferences.shortcut(Tool.recognizeQRCode.legacyName)?.matches(event) == true {
+    if Environment.shared.preferences.shortcut(Tool.recognizeQRCode.legacyName)?.matches(event)
+      == true
+    {
       controller?.recognizeQRCode(nil)
       return
     }
@@ -53,8 +72,16 @@ import VisionKit
       controller?.translateImage(nil)
       return
     }
-    if Environment.shared.preferences.shortcut(Tool.recognizeTable.legacyName)?.matches(event) == true {
+    if Environment.shared.preferences.shortcut(Tool.recognizeTable.legacyName)?.matches(event)
+      == true
+    {
       controller?.recognizeTable(nil)
+      return
+    }
+    if Environment.shared.preferences.shortcut(Tool.recognizeDocument.legacyName)?.matches(event)
+      == true
+    {
+      controller?.recognizeDocument(nil)
       return
     }
     if event.modifierFlags.contains(.command), event.keyCode == 8 {
@@ -76,11 +103,25 @@ import VisionKit
     for (title, selector) in [
       (localized("Copy", "复制"), #selector(PinWindowController.copyImage(_:))),
       (localized("Save…", "保存…"), #selector(PinWindowController.saveImage(_:))),
+      (localized("Annotate…", "标注…"), #selector(PinWindowController.annotate(_:))),
+      (localized("Rotate clockwise", "顺时针旋转"), #selector(PinWindowController.rotateClockwise(_:))),
+      (localized("Flip horizontally", "水平翻转"), #selector(PinWindowController.flipHorizontally(_:))),
+      (
+        controller?.locked == true ? localized("Unlock", "解锁") : localized("Lock", "锁定"),
+        #selector(PinWindowController.toggleLock(_:))
+      ),
       (localized("Open with…", "使用其他应用打开…"), #selector(PinWindowController.openImage(_:))),
       (localized("Recognize text…", "识别文字…"), #selector(PinWindowController.recognizeText(_:))),
-      (localized("Recognize QR code…", "识别二维码…"), #selector(PinWindowController.recognizeQRCode(_:))),
+      (
+        localized("Recognize QR / barcode…", "识别二维码 / 条码…"),
+        #selector(PinWindowController.recognizeQRCode(_:))
+      ),
       (localized("Translate…", "翻译…"), #selector(PinWindowController.translateImage(_:))),
       (localized("Recognize table…", "识别表格…"), #selector(PinWindowController.recognizeTable(_:))),
+      (
+        localized("Recognize document…", "识别文档…"),
+        #selector(PinWindowController.recognizeDocument(_:))
+      ),
       (localized("Actual size", "实际大小"), #selector(PinWindowController.actualSize(_:))),
       (localized("Close", "关闭"), #selector(PinWindowController.closeImage(_:))),
     ] {
@@ -90,10 +131,15 @@ import VisionKit
     }
   }
 }
-@MainActor final class PinWindowController: NSWindowController, NSWindowDelegate,
+@MainActor
+final class PinWindowController: NSWindowController, NSWindowDelegate,
   ImageAnalysisOverlayViewDelegate
 {
   let image: CGImage
+  private(set) var displayedImage: CGImage
+  private(set) var quarterTurns = 0
+  private(set) var mirrored = false
+  private(set) var locked = false
   let archiveID: UUID
   let created: Date
   var closed: Date?
@@ -103,12 +149,15 @@ import VisionKit
   var onRecognize: ((CGImage, RecognitionKind) -> Void)?
   var onTranslate: ((CGImage) -> Void)?
   var onRecognizeTable: ((CGImage) -> Void)?
+  var onAnnotate: ((PinWindowController) -> Void)?
   private let textOverlay = ImageAnalysisOverlayView()
   private var analysisStarted = false
   private var analysisTask: Task<Void, Never>?
-  private let naturalSize: CGSize
-  init(image: CGImage, screen: NSScreen? = NSScreen.main, id: UUID = UUID(), created: Date = Date()) {
+  private var naturalSize: CGSize
+  init(image: CGImage, screen: NSScreen? = NSScreen.main, id: UUID = UUID(), created: Date = Date())
+  {
     self.image = image
+    displayedImage = image
     archiveID = id
     self.created = created
     let scale = screen?.backingScaleFactor ?? 2
@@ -154,18 +203,19 @@ import VisionKit
   func show() {
     showWindow(nil)
     window?.makeKeyAndOrderFront(nil)
+    window?.makeFirstResponder(imageView)
     NSApp.activate()
     if !analysisStarted {
       analysisStarted = true
       analysisTask = Task { [weak self] in
         guard let self else { return }
-        let analysis = try? await ImageRecognition.text(self.image)
+        let analysis = try? await ImageRecognition.text(self.displayedImage)
         if !Task.isCancelled { self.textOverlay.analysis = analysis }
       }
     }
   }
   func zoom(_ factor: CGFloat) {
-    guard let window else { return }
+    guard let window, !locked else { return }
     let old = window.frame
     let size = NSSize(width: max(80, old.width * factor), height: max(80, old.height * factor))
     window.setFrame(
@@ -182,7 +232,7 @@ import VisionKit
     Task {
       do {
         try await ImageRenderer.copy(
-          image, jpeg: Environment.shared.preferences.bool("useJpgForClipboard"),
+          displayedImage, jpeg: Environment.shared.preferences.bool("useJpgForClipboard"),
           quality: Environment.shared.preferences.integer("jpegQuality"),
           optimize: Environment.shared.preferences.bool("losslessCompression"))
       } catch { warning(localized("Copy failed", "复制失败"), errorMessage(error), window: window) }
@@ -190,23 +240,78 @@ import VisionKit
   }
   @objc func saveImage(_ sender: Any?) {
     Task {
-      do { _ = try await Files.save(image, forceDialog: true) } catch {
+      do { _ = try await Files.save(displayedImage, forceDialog: true) } catch {
         warning(localized("Save failed", "保存失败"), errorMessage(error), window: window)
       }
     }
   }
   @objc func openImage(_ sender: Any?) {
     Task {
-      do { _ = try await Files.openWith(image) } catch {
+      do { _ = try await Files.openWith(displayedImage) } catch {
         warning(localized("Open failed", "打开失败"), errorMessage(error), window: window)
       }
     }
   }
-  @objc func actualSize(_ sender: Any?) { window?.setContentSize(naturalSize) }
-  @objc func recognizeText(_ sender: Any?) { onRecognize?(image, .text) }
-  @objc func recognizeQRCode(_ sender: Any?) { onRecognize?(image, .qrCode) }
-  @objc func translateImage(_ sender: Any?) { onTranslate?(image) }
-  @objc func recognizeTable(_ sender: Any?) { onRecognizeTable?(image) }
+  @objc func actualSize(_ sender: Any?) { if !locked { window?.setContentSize(naturalSize) } }
+  @objc func recognizeText(_ sender: Any?) { onRecognize?(displayedImage, .text) }
+  @objc func recognizeQRCode(_ sender: Any?) { onRecognize?(displayedImage, .qrCode) }
+  @objc func recognizeDocument(_ sender: Any?) { onRecognize?(displayedImage, .document) }
+  @objc func translateImage(_ sender: Any?) { onTranslate?(displayedImage) }
+  @objc func recognizeTable(_ sender: Any?) { onRecognizeTable?(displayedImage) }
+  @objc func annotate(_ sender: Any?) { onAnnotate?(self) }
+  @objc func rotateClockwise(_ sender: Any?) {
+    guard !locked else { return }
+    quarterTurns = (quarterTurns + 1) % 4
+    updateTransform()
+  }
+  @objc func flipHorizontally(_ sender: Any?) {
+    guard !locked else { return }
+    mirrored.toggle()
+    updateTransform()
+  }
+  @objc func toggleLock(_ sender: Any?) {
+    locked.toggle()
+    if locked { window?.styleMask.remove(.resizable) } else { window?.styleMask.insert(.resizable) }
+    onChange?(self)
+  }
+  func restoreTransform(from record: ArchivedPin) {
+    quarterTurns = ((record.quarterTurns ?? 0) % 4 + 4) % 4
+    mirrored = record.mirrored ?? false
+    updateTransform(notify: false)
+    if record.locked == true { toggleLock(nil) }
+  }
+  private func updateTransform(notify: Bool = true) {
+    do {
+      displayedImage = try PinImageTransform.apply(
+        image, quarterTurns: quarterTurns, mirrored: mirrored)
+      let scale = window?.screen?.backingScaleFactor ?? 2
+      naturalSize = CGSize(
+        width: CGFloat(displayedImage.width) / scale, height: CGFloat(displayedImage.height) / scale
+      )
+      imageView.image = NSImage(cgImage: displayedImage, size: naturalSize)
+      window?.contentAspectRatio = naturalSize
+      window?.contentMinSize = NSSize(
+        width: 80, height: 80 * naturalSize.height / max(1, naturalSize.width))
+      if let window {
+        let current = window.contentView?.frame.size ?? naturalSize
+        var proposed = NSSize(
+          width: current.width, height: current.width * naturalSize.height / naturalSize.width)
+        if let visible = window.screen?.visibleFrame {
+          let fit = min(
+            1, visible.width * 0.8 / proposed.width, visible.height * 0.8 / proposed.height)
+          proposed = NSSize(width: proposed.width * fit, height: proposed.height * fit)
+        }
+        window.setContentSize(proposed)
+      }
+      textOverlay.analysis = nil
+      analysisTask?.cancel()
+      analysisStarted = false
+      if window?.isVisible == true { show() }
+      if notify { onChange?(self) }
+    } catch {
+      warning(localized("Unable to transform image", "无法变换图片"), errorMessage(error), window: window)
+    }
+  }
   @objc func closeImage(_ sender: Any?) { window?.close() }
   func windowDidMove(_ notification: Notification) { onChange?(self) }
   func windowDidResize(_ notification: Notification) { onChange?(self) }

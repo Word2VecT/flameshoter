@@ -68,6 +68,38 @@ private func pixels(_ image: CGImage) -> [UInt8] {
   blue.add(mask)
   #expect(pixels(try ImageRenderer.render(red)) == pixels(try ImageRenderer.render(blue)))
 }
+@Test @MainActor func redactionSamplesTheCompositedBorderAtItsImageCoordinates() throws {
+  var document = CaptureDocument(image: fixture(), logicalSize: CGSize(width: 24, height: 20))
+  var stripe = Annotation(
+    tool: .rectangle, points: [CGPoint(x: 4, y: 10), CGPoint(x: 20, y: 16)],
+    color: RGBA(0, 0, 1), width: 1)
+  stripe.filled = true
+  document.add(stripe)
+  document.add(
+    Annotation(
+      tool: .pixelate, points: [CGPoint(x: 6, y: 3), CGPoint(x: 18, y: 11)], width: 4))
+  let image = try ImageRenderer.render(document)
+  let data = pixels(image)
+  func color(_ x: Int, _ y: Int) -> ArraySlice<UInt8> {
+    let offset = (y * image.width + x) * 4
+    return data[offset..<(offset + 4)]
+  }
+  // The first two blocks sample the blue annotation below and the red fixture stripe above.
+  #expect(color(8, 5) == [0, 0, 255, 255])
+  #expect(color(12, 5) == [255, 0, 0, 255])
+  #expect(color(16, 5) == color(18, 3))
+}
+@Test @MainActor func redactionCoveringTheSelectionUsesOpaqueBlack() throws {
+  var document = CaptureDocument(image: fixture(), logicalSize: CGSize(width: 12, height: 10))
+  document.selection = CGRect(x: 2, y: 1, width: 7, height: 5)
+  document.add(
+    Annotation(
+      tool: .pixelate, points: [CGPoint(x: 2, y: 1), CGPoint(x: 9, y: 6)], width: 4))
+  let mask = try ImageRenderer.render(document)
+  let expected: [UInt8] = Array(repeating: [0, 0, 0, 255], count: mask.width * mask.height).flatMap
+  { $0 }
+  #expect(pixels(mask) == expected)
+}
 @Test func historyAndHitTesting() {
   var document = CaptureDocument(
     image: fixture(), logicalSize: CGSize(width: 24, height: 20), undoLimit: 2)
@@ -155,8 +187,13 @@ private func pixels(_ image: CGImage) -> [UInt8] {
   try JSONEncoder().encode(old).write(to: url)
   let upgraded = SettingsStore(url: url)
   #expect(upgraded.loadError == nil)
-  #expect(upgraded.preferences.schemaVersion == 12)
-  #expect(upgraded.preferences.tools == [.pencil, .copy, .share, .recognizeText, .recognizeQRCode, .longCapture, .screenRecording, .refreshCapture, .translate, .recognizeTable])
+  #expect(upgraded.preferences.schemaVersion == 13)
+  #expect(
+    upgraded.preferences.tools == [
+      .pencil, .copy, .share, .recognizeText, .recognizeQRCode, .longCapture, .screenRecording,
+      .refreshCapture, .translate, .recognizeTable, .spotlight, .polyline, .magnify, .watermark,
+      .autoRedact, .recognizeDocument,
+    ])
   #expect(upgraded.preferences.values == old.values)
   #expect(upgraded.preferences.shortcuts == old.shortcuts)
   upgraded.update {
@@ -185,7 +222,12 @@ private func pixels(_ image: CGImage) -> [UInt8] {
   old.shortcuts["TYPE_COPY"] = Shortcut(8, [.shift])
   try JSONEncoder().encode(old).write(to: url)
   let upgraded = SettingsStore(url: url)
-  #expect(upgraded.preferences.tools == [.copy, .recognizeText, .recognizeQRCode, .longCapture, .screenRecording, .refreshCapture, .translate, .recognizeTable])
+  #expect(
+    upgraded.preferences.tools == [
+      .copy, .recognizeText, .recognizeQRCode, .longCapture, .screenRecording, .refreshCapture,
+      .translate, .recognizeTable, .spotlight, .polyline, .magnify, .watermark, .autoRedact,
+      .recognizeDocument,
+    ])
   #expect(upgraded.preferences.shortcut(Tool.recognizeText.legacyName) == nil)
   #expect(upgraded.preferences.shortcut(Tool.recognizeQRCode.legacyName) == Shortcut(12))
   upgraded.update { $0.tools.removeAll { $0 == .recognizeQRCode } }
@@ -206,7 +248,11 @@ private func pixels(_ image: CGImage) -> [UInt8] {
   old.shortcuts["TYPE_PENCIL"] = Shortcut(37)
   try JSONEncoder().encode(old).write(to: url)
   let upgraded = SettingsStore(url: url)
-  #expect(upgraded.preferences.tools == [.copy, .longCapture, .screenRecording, .refreshCapture, .translate, .recognizeTable])
+  #expect(
+    upgraded.preferences.tools == [
+      .copy, .longCapture, .screenRecording, .refreshCapture, .translate, .recognizeTable,
+      .spotlight, .polyline, .magnify, .watermark, .autoRedact, .recognizeDocument,
+    ])
   #expect(upgraded.preferences.shortcut("TYPE_PENCIL") == Shortcut(37))
   #expect(upgraded.preferences.shortcut(Tool.longCapture.legacyName) == nil)
   upgraded.update { $0.tools.removeAll { $0 == .longCapture } }
@@ -225,7 +271,11 @@ private func pixels(_ image: CGImage) -> [UInt8] {
   old.shortcuts["TYPE_PENCIL"] = Shortcut(5)
   try JSONEncoder().encode(old).write(to: url)
   let upgraded = SettingsStore(url: url)
-  #expect(upgraded.preferences.tools == [.copy, .screenRecording, .refreshCapture, .translate, .recognizeTable])
+  #expect(
+    upgraded.preferences.tools == [
+      .copy, .screenRecording, .refreshCapture, .translate, .recognizeTable, .spotlight, .polyline,
+      .magnify, .watermark, .autoRedact, .recognizeDocument,
+    ])
   #expect(upgraded.preferences.shortcut("TYPE_PENCIL") == Shortcut(5))
   #expect(upgraded.preferences.shortcut(Tool.screenRecording.legacyName) == nil)
   upgraded.update { $0.tools.removeAll { $0 == .screenRecording } }

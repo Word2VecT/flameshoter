@@ -4,7 +4,7 @@ import Vision
 import VisionKit
 
 enum RecognitionKind {
-  case text, qrCode
+  case text, qrCode, document
 }
 
 struct RecognizedTextLine: Equatable, Sendable {
@@ -14,19 +14,40 @@ struct RecognizedTextLine: Equatable, Sendable {
 }
 
 enum ImageRecognition {
-  static func lines(_ image: CGImage, language: String? = nil) async throws -> [RecognizedTextLine] {
+  struct Barcode: Equatable, Sendable {
+    let payload: String
+    let symbology: String
+  }
+  static func barcodes(_ image: CGImage) async throws -> [Barcode] {
+    try await Task.detached(priority: .userInitiated) {
+      let request = VNDetectBarcodesRequest()
+      request.symbologies = try request.supportedSymbologies()
+      try VNImageRequestHandler(cgImage: image, orientation: .up).perform([request])
+      return (request.results ?? []).compactMap { observation in
+        observation.payloadStringValue.map {
+          Barcode(payload: $0, symbology: observation.symbology.rawValue)
+        }
+      }
+    }.value
+  }
+  static func lines(_ image: CGImage, language: String? = nil) async throws -> [RecognizedTextLine]
+  {
     try await Task.detached(priority: .userInitiated) {
       let request = VNRecognizeTextRequest()
       request.recognitionLevel = .accurate
       request.usesLanguageCorrection = true
       let supported = try request.supportedRecognitionLanguages()
-      let requested = language.map { [$0, "en-US"] }
+      let requested =
+        language.map { [$0, "en-US"] }
         ?? Array(Locale.preferredLanguages.prefix(2)) + ["zh-Hans", "en-US"]
       var chosen: [String] = []
       for raw in requested {
         let identifier = raw == "zh-TW" || raw == "zh-HK" ? "zh-Hant" : raw
-        let match = supported.first { $0.caseInsensitiveCompare(identifier) == .orderedSame }
-          ?? supported.first { $0.split(separator: "-").first == identifier.split(separator: "-").first }
+        let match =
+          supported.first { $0.caseInsensitiveCompare(identifier) == .orderedSame }
+          ?? supported.first {
+            $0.split(separator: "-").first == identifier.split(separator: "-").first
+          }
         if let match, !chosen.contains(match) { chosen.append(match) }
       }
       if !chosen.isEmpty { request.recognitionLanguages = chosen }
@@ -42,7 +63,9 @@ enum ImageRecognition {
     let supported = ImageAnalyzer.supportedTextRecognitionLanguages
     let preferred = Locale.preferredLanguages.compactMap { language in
       supported.first { language == $0 || language.hasPrefix($0 + "-") }
-        ?? supported.first { $0.split(separator: "-").first == language.split(separator: "-").first }
+        ?? supported.first {
+          $0.split(separator: "-").first == language.split(separator: "-").first
+        }
     }
     var configuration = ImageAnalyzer.Configuration(.text)
     for language in preferred + ["zh-Hans", "en-US"] where supported.contains(language) {
@@ -61,7 +84,8 @@ enum ImageRecognition {
   }
 }
 
-@MainActor final class RecognitionWindowController: NSWindowController, NSWindowDelegate,
+@MainActor
+final class RecognitionWindowController: NSWindowController, NSWindowDelegate,
   ImageAnalysisOverlayViewDelegate, NSTextViewDelegate
 {
   private let image: CGImage
@@ -71,6 +95,9 @@ enum ImageRecognition {
   private let textView = NSTextView()
   private let status = NSTextField(labelWithString: "")
   private let copyButton: ActionButton
+  private let saveButton = ActionButton(
+    localized("Save document…", "保存文档…"), symbol: "square.and.arrow.down", action: {})
+  private var recognitionTask: Task<Void, Never>?
   var onClose: ((RecognitionWindowController) -> Void)?
 
   init(image: CGImage, kind: RecognitionKind) {
@@ -81,8 +108,11 @@ enum ImageRecognition {
       contentRect: NSRect(x: 0, y: 0, width: 820, height: 500),
       styleMask: [.titled, .closable, .miniaturizable, .resizable],
       backing: .buffered, defer: false)
-    window.title = kind == .text
-      ? localized("Text recognition", "文字识别") : localized("QR code recognition", "二维码识别")
+    window.title =
+      kind == .qrCode
+      ? localized("QR / barcode recognition", "二维码 / 条码识别")
+      : kind == .document
+        ? localized("Document recognition", "文档识别") : localized("Text recognition", "文字识别")
     window.minSize = NSSize(width: 560, height: 320)
     window.isReleasedWhenClosed = false
     window.center()
@@ -90,6 +120,8 @@ enum ImageRecognition {
     window.delegate = self
     copyButton.invoke = { [weak self] in self?.copyText() }
     copyButton.isEnabled = false
+    saveButton.isEnabled = false
+    saveButton.invoke = { [weak self] in self?.saveDocument() }
     buildView()
   }
 
@@ -105,7 +137,8 @@ enum ImageRecognition {
     split.translatesAutoresizingMaskIntoConstraints = false
     root.addSubview(split)
     let imageContainer = NSView()
-    imageView.image = NSImage(cgImage: image, size: NSSize(width: image.width, height: image.height))
+    imageView.image = NSImage(
+      cgImage: image, size: NSSize(width: image.width, height: image.height))
     imageView.imageScaling = .scaleProportionallyUpOrDown
     imageView.imageAlignment = .alignCenter
     imageView.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
@@ -153,6 +186,8 @@ enum ImageRecognition {
     copyButton.translatesAutoresizingMaskIntoConstraints = false
     root.addSubview(status)
     root.addSubview(copyButton)
+    saveButton.translatesAutoresizingMaskIntoConstraints = false
+    root.addSubview(saveButton)
     NSLayoutConstraint.activate([
       split.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: 16),
       split.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -16),
@@ -162,7 +197,9 @@ enum ImageRecognition {
       copyButton.bottomAnchor.constraint(equalTo: root.bottomAnchor, constant: -16),
       status.leadingAnchor.constraint(equalTo: split.leadingAnchor),
       status.centerYAnchor.constraint(equalTo: copyButton.centerYAnchor),
-      status.trailingAnchor.constraint(lessThanOrEqualTo: copyButton.leadingAnchor, constant: -12),
+      saveButton.trailingAnchor.constraint(equalTo: copyButton.leadingAnchor, constant: -8),
+      saveButton.centerYAnchor.constraint(equalTo: copyButton.centerYAnchor),
+      status.trailingAnchor.constraint(lessThanOrEqualTo: saveButton.leadingAnchor, constant: -12),
     ])
     window.layoutIfNeeded()
     split.setPosition(split.bounds.width / 2, ofDividerAt: 0)
@@ -172,19 +209,32 @@ enum ImageRecognition {
     showWindow(nil)
     window?.makeKeyAndOrderFront(nil)
     NSApp.activate()
-    Task { [weak self] in
+    recognitionTask?.cancel()
+    recognitionTask = Task { [weak self] in
       guard let self else { return }
       do {
         switch self.kind {
         case .text:
           let analysis = try await ImageRecognition.text(self.image)
+          guard !Task.isCancelled else { return }
           self.overlay.analysis = analysis
           self.showResult(analysis.transcript)
         case .qrCode:
-          self.showResult(try await ImageRecognition.qrCodes(self.image).joined(separator: "\n"))
+          let codes = try await ImageRecognition.barcodes(self.image)
+          guard !Task.isCancelled else { return }
+          self.showResult(codes.map(\.payload).joined(separator: "\n"))
+          if !codes.isEmpty {
+            self.status.stringValue = codes.map(\.symbology).joined(separator: ", ")
+          }
+        case .document:
+          let text = try await DocumentRecognition.text(self.image)
+          guard !Task.isCancelled else { return }
+          self.showResult(text)
         }
       } catch {
-        self.status.stringValue = localized("Recognition failed", "识别失败") + ": " + errorMessage(error)
+        guard !Task.isCancelled else { return }
+        self.status.stringValue =
+          localized("Recognition failed", "识别失败") + ": " + errorMessage(error)
       }
     }
   }
@@ -193,16 +243,20 @@ enum ImageRecognition {
     textView.string = text
     textView.isEditable = true
     copyButton.isEnabled = !text.isEmpty
-    status.stringValue = text.isEmpty
-      ? (kind == .text ? localized("No text found", "未识别到文字")
-        : localized("No QR code found", "未识别到二维码"))
+    saveButton.isEnabled = !text.isEmpty
+    status.stringValue =
+      text.isEmpty
+      ? (kind != .qrCode
+        ? localized("No text found", "未识别到文字")
+        : localized("No QR code or barcode found", "未识别到二维码或条码"))
       : localized("Recognition complete", "识别完成")
   }
 
   private func copyText() {
     let range = textView.selectedRange()
     let selected = range.length > 0 ? (textView.string as NSString).substring(with: range) : ""
-    let value = !selected.isEmpty
+    let value =
+      !selected.isEmpty
       ? selected : (!overlay.selectedText.isEmpty ? overlay.selectedText : textView.string)
     guard !value.isEmpty else { return }
     NSPasteboard.general.clearContents()
@@ -218,11 +272,42 @@ enum ImageRecognition {
       || overlayView.hasInteractiveItem(at: point) || overlayView.hasActiveTextSelection
   }
   func textSelectionDidChange(_ overlayView: ImageAnalysisOverlayView) {
-    if overlayView.hasActiveTextSelection { textView.setSelectedRange(NSRange(location: 0, length: 0)) }
+    if overlayView.hasActiveTextSelection {
+      textView.setSelectedRange(NSRange(location: 0, length: 0))
+    }
   }
   func textViewDidChangeSelection(_ notification: Notification) {
     if textView.selectedRange().length > 0 { overlay.resetSelection() }
   }
-  func textDidChange(_ notification: Notification) { copyButton.isEnabled = !textView.string.isEmpty }
-  func windowWillClose(_ notification: Notification) { onClose?(self) }
+  private func saveDocument() {
+    guard let window else { return }
+    let panel = NSSavePanel()
+    let formats = DocumentExport.Format.allCases
+    let popup = ActionPopup(items: formats.map(\.label), selected: 0) { index in
+      panel.allowedContentTypes = [formats[index].contentType]
+      panel.nameFieldStringValue = "Flameshoter." + formats[index].rawValue
+    }
+    panel.allowedContentTypes = [formats[0].contentType]
+    panel.nameFieldStringValue = "Flameshoter.docx"
+    panel.accessoryView = popup
+    panel.beginSheetModal(for: window) { [weak self] result in
+      guard result == .OK, let self, let url = panel.url else { return }
+      do {
+        try DocumentExport.data(self.textView.string, format: formats[popup.indexOfSelectedItem])
+          .write(to: url, options: .atomic)
+        self.status.stringValue = localized("Saved", "已保存") + " · " + url.lastPathComponent
+      } catch {
+        self.status.stringValue =
+          localized("Unable to save document", "无法保存文档") + ": " + errorMessage(error)
+      }
+    }
+  }
+  func textDidChange(_ notification: Notification) {
+    copyButton.isEnabled = !textView.string.isEmpty
+    saveButton.isEnabled = !textView.string.isEmpty
+  }
+  func windowWillClose(_ notification: Notification) {
+    recognitionTask?.cancel()
+    onClose?(self)
+  }
 }

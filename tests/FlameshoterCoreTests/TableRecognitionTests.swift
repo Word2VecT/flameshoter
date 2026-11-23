@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 import AppKit
-import Testing
 import FlameshoterCore
+import Testing
+
 @testable import Flameshoter
 
 @MainActor private func tableFixture(merged: Bool = false) -> CGImage {
@@ -13,17 +14,22 @@ import FlameshoterCore
   let grid = NSBezierPath()
   grid.lineWidth = 3
   for x in [60, 420, 780, 1140] {
-    grid.move(to: NSPoint(x: x, y: 75)); grid.line(to: NSPoint(x: x, y: merged && x == 420 ? 450 : 575))
+    grid.move(to: NSPoint(x: x, y: 75))
+    grid.line(to: NSPoint(x: x, y: merged && x == 420 ? 450 : 575))
   }
   for y in [75, 200, 325, 450, 575] {
-    grid.move(to: NSPoint(x: 60, y: y)); grid.line(to: NSPoint(x: 1140, y: y))
+    grid.move(to: NSPoint(x: 60, y: y))
+    grid.line(to: NSPoint(x: 1140, y: y))
   }
   grid.stroke()
-  let rows = [merged ? ["Products", "", "Price"] : ["Item", "Quantity", "Price"], ["Pencil", "20", "3.50"],
-              ["Notebook", "50", "8.25"], ["Folder", "30", "2.20"]]
+  let rows = [
+    merged ? ["Products", "", "Price"] : ["Item", "Quantity", "Price"], ["Pencil", "20", "3.50"],
+    ["Notebook", "50", "8.25"], ["Folder", "30", "2.20"],
+  ]
   for (row, values) in rows.enumerated() {
     for (column, text) in values.enumerated() {
-      (text as NSString).draw(at: NSPoint(x: 90 + 360 * column, y: 495 - 125 * row),
+      (text as NSString).draw(
+        at: NSPoint(x: 90 + 360 * column, y: 495 - 125 * row),
         withAttributes: [.font: NSFont.systemFont(ofSize: 38), .foregroundColor: NSColor.black])
     }
   }
@@ -48,11 +54,13 @@ import FlameshoterCore
 }
 
 @Test func tableEditsAndDelimitedExportsPreserveCells() {
-  var table = RecognizedTable(rowCount: 2, columnCount: 3, cells: [
-    .init(rows: 0...0, columns: 0...1, text: "合并,标题"),
-    .init(rows: 1...1, columns: 0...0, text: "A\"B"),
-    .init(rows: 1...1, columns: 2...2, text: "line\nbreak"),
-  ])
+  var table = RecognizedTable(
+    rowCount: 2, columnCount: 3,
+    cells: [
+      .init(rows: 0...0, columns: 0...1, text: "合并,标题"),
+      .init(rows: 1...1, columns: 0...0, text: "A\"B"),
+      .init(rows: 1...1, columns: 2...2, text: "line\nbreak"),
+    ])
   #expect(!table.isEditable(row: 0, column: 1))
   table.setValue("ignored", row: 0, column: 1)
   table.setValue("20", row: 1, column: 1)
@@ -75,15 +83,18 @@ private func zipEntry(_ url: URL, _ entry: String) throws -> String {
 }
 
 @Test func excelExportPreservesMergedCellsAndText() throws {
-  let table = RecognizedTable(rowCount: 3, columnCount: 3, cells: [
-    .init(rows: 0...0, columns: 0...1, text: "合并标题"),
-    .init(rows: 1...1, columns: 0...0, text: "=1+2"),
-    .init(rows: 1...1, columns: 1...1, text: "3.50"),
-    .init(rows: 1...1, columns: 2...2, text: "30 & 40"),
-    .init(rows: 2...2, columns: 0...0, text: "00123"),
-    .init(rows: 2...2, columns: 1...1, text: "20"),
-  ])
-  let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".xlsx")
+  let table = RecognizedTable(
+    rowCount: 3, columnCount: 3,
+    cells: [
+      .init(rows: 0...0, columns: 0...1, text: "合并标题"),
+      .init(rows: 1...1, columns: 0...0, text: "=1+2"),
+      .init(rows: 1...1, columns: 1...1, text: "3.50"),
+      .init(rows: 1...1, columns: 2...2, text: "30 & 40"),
+      .init(rows: 2...2, columns: 0...0, text: "00123"),
+      .init(rows: 2...2, columns: 1...1, text: "20"),
+    ])
+  let url = FileManager.default.temporaryDirectory.appendingPathComponent(
+    UUID().uuidString + ".xlsx")
   defer { try? FileManager.default.removeItem(at: url) }
   try TableExport.xlsx(table).write(to: url)
   let sheet = try zipEntry(url, "xl/worksheets/sheet1.xml")
@@ -109,8 +120,10 @@ private func zipEntry(_ url: URL, _ entry: String) throws -> String {
   defer { pin.window?.close() }
   var received: CGImage?
   pin.onRecognizeTable = { received = $0 }
-  let event = try #require(NSEvent.mouseEvent(with: .rightMouseDown, location: .zero, modifierFlags: [],
-    timestamp: 0, windowNumber: 0, context: nil, eventNumber: 0, clickCount: 1, pressure: 1))
+  let event = try #require(
+    NSEvent.mouseEvent(
+      with: .rightMouseDown, location: .zero, modifierFlags: [],
+      timestamp: 0, windowNumber: 0, context: nil, eventNumber: 0, clickCount: 1, pressure: 1))
   let menu = try #require(pin.imageView.menu(for: event))
   #expect(menu.items.contains { $0.action == #selector(PinWindowController.recognizeTable(_:)) })
   pin.recognizeTable(nil)
@@ -128,22 +141,28 @@ private func zipEntry(_ url: URL, _ entry: String) throws -> String {
   old.shortcuts["TYPE_COPY"] = Shortcut(12, [.shift])
   try JSONEncoder().encode(old).write(to: url)
   let updated = SettingsStore(url: url).preferences
-  #expect(updated.tools == [.copy, .recognizeTable])
+  #expect(
+    updated.tools == [
+      .copy, .recognizeTable, .spotlight, .polyline, .magnify, .watermark, .autoRedact,
+      .recognizeDocument,
+    ])
   #expect(updated.shortcut("TYPE_COPY") == Shortcut(12, [.shift]))
   #expect(updated.shortcut(Tool.recognizeTable.legacyName) == nil)
 }
 
 @Test func tableSortingMovesWholeRowsAndKeepsHeader() throws {
-  let table = RecognizedTable(rowCount: 4, columnCount: 3, cells: [
-    .init(rows: 0...0, columns: 0...1, text: "商品"),
-    .init(rows: 0...0, columns: 2...2, text: "价格"),
-    .init(rows: 1...1, columns: 0...0, text: "A"),
-    .init(rows: 1...1, columns: 2...2, text: "1,200.50"),
-    .init(rows: 2...2, columns: 0...0, text: "B"),
-    .init(rows: 2...2, columns: 2...2, text: "20"),
-    .init(rows: 3...3, columns: 0...0, text: "C"),
-    .init(rows: 3...3, columns: 2...2, text: "3"),
-  ])
+  let table = RecognizedTable(
+    rowCount: 4, columnCount: 3,
+    cells: [
+      .init(rows: 0...0, columns: 0...1, text: "商品"),
+      .init(rows: 0...0, columns: 2...2, text: "价格"),
+      .init(rows: 1...1, columns: 0...0, text: "A"),
+      .init(rows: 1...1, columns: 2...2, text: "1,200.50"),
+      .init(rows: 2...2, columns: 0...0, text: "B"),
+      .init(rows: 2...2, columns: 2...2, text: "20"),
+      .init(rows: 3...3, columns: 0...0, text: "C"),
+      .init(rows: 3...3, columns: 2...2, text: "3"),
+    ])
   let sorted = try #require(table.sorted(column: 2, ascending: true, keepHeader: true))
   #expect((0..<4).map { sorted.value(row: $0, column: 0) } == ["商品", "C", "B", "A"])
   #expect(sorted.cells.contains { $0.rows == 0...0 && $0.columns == 0...1 && $0.text == "商品" })
@@ -155,10 +174,12 @@ private func zipEntry(_ url: URL, _ entry: String) throws -> String {
 }
 
 @Test func tableRowAndColumnChangesKeepMergedRangesConsistent() throws {
-  var table = RecognizedTable(rowCount: 3, columnCount: 3, cells: [
-    .init(rows: 0...0, columns: 0...0, text: "Header"),
-    .init(rows: 1...2, columns: 1...2, text: "Merged"),
-  ])
+  var table = RecognizedTable(
+    rowCount: 3, columnCount: 3,
+    cells: [
+      .init(rows: 0...0, columns: 0...0, text: "Header"),
+      .init(rows: 1...2, columns: 1...2, text: "Merged"),
+    ])
   table.insert(2, rows: true)
   table.insert(2, rows: false)
   #expect(table.rowCount == 4 && table.columnCount == 4)

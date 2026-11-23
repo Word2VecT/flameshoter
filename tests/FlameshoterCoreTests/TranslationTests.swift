@@ -10,9 +10,11 @@ import Testing
   image.lockFocus()
   NSColor.white.setFill()
   NSRect(x: 0, y: 0, width: 500, height: 200).fill()
-  ("Hello world" as NSString).draw(at: CGPoint(x: 40, y: 90), withAttributes: [
-    .font: NSFont.systemFont(ofSize: 32), .foregroundColor: NSColor.black,
-  ])
+  ("Hello world" as NSString).draw(
+    at: CGPoint(x: 40, y: 90),
+    withAttributes: [
+      .font: NSFont.systemFont(ofSize: 32), .foregroundColor: NSColor.black,
+    ])
   image.unlockFocus()
   return image.cgImage(forProposedRect: nil, context: nil, hints: nil)!
 }
@@ -23,15 +25,19 @@ private func translationPixels(_ image: CGImage) -> [UInt8] {
     bytesPerRow: image.width * 4, space: CGColorSpace(name: CGColorSpace.sRGB)!,
     bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
   context.draw(image, in: CGRect(x: 0, y: 0, width: image.width, height: image.height))
-  return Array(UnsafeBufferPointer(start: context.data!.assumingMemoryBound(to: UInt8.self),
-                                   count: image.width * image.height * 4))
+  return Array(
+    UnsafeBufferPointer(
+      start: context.data!.assumingMemoryBound(to: UInt8.self),
+      count: image.width * image.height * 4))
 }
 
 @Test @MainActor func translatedImageChangesTextAreaWithoutChangingOtherPixels() throws {
   _ = NSApplication.shared
   let original = translationFixture()
-  let line = RecognizedTextLine(text: "Hello world", bounds: CGRect(x: 0.075, y: 0.43, width: 0.38, height: 0.23))
-  let result = try TranslationImageRenderer.render(original, lines: [line], translated: ["你好，世界"]).image
+  let line = RecognizedTextLine(
+    text: "Hello world", bounds: CGRect(x: 0.075, y: 0.43, width: 0.38, height: 0.23))
+  let result = try TranslationImageRenderer.render(original, lines: [line], translated: ["你好，世界"])
+    .image
   #expect(result.width == original.width && result.height == original.height)
   let before = translationPixels(original)
   let after = translationPixels(result)
@@ -39,7 +45,7 @@ private func translationPixels(_ image: CGImage) -> [UInt8] {
   for y in 0..<20 {
     for x in 0..<20 {
       let index = (y * original.width + x) * 4
-      #expect(Array(before[index..<index+4]) == Array(after[index..<index+4]))
+      #expect(Array(before[index..<index + 4]) == Array(after[index..<index + 4]))
     }
   }
   #expect(throws: TranslationDisplayError.self) {
@@ -57,10 +63,12 @@ private func translationPixels(_ image: CGImage) -> [UInt8] {
   context.setFillColor(NSColor.blue.cgColor)
   context.fill(CGRect(x: 0, y: 50, width: 200, height: 50))
   let original = try #require(context.makeImage())
-  let line = RecognizedTextLine(text: "One", bounds: CGRect(x: 0.25, y: 0.1, width: 0.5, height: 0.2))
+  let line = RecognizedTextLine(
+    text: "One", bounds: CGRect(x: 0.25, y: 0.1, width: 0.5, height: 0.2))
   let result = try TranslationImageRenderer.render(original, lines: [line], translated: ["一"]).image
   let pixels = translationPixels(result)
-  let x = 48, yFromTop = 100 - 1 - 8
+  let x = 48
+  let yFromTop = 100 - 1 - 8
   let index = (yFromTop * 200 + x) * 4
   #expect(pixels[index] > 200 && pixels[index + 2] < 50)
 }
@@ -68,7 +76,8 @@ private func translationPixels(_ image: CGImage) -> [UInt8] {
 @Test @MainActor func translatedImageReportsWhenTextDoesNotFit() throws {
   _ = NSApplication.shared
   let image = translationFixture()
-  let line = RecognizedTextLine(text: "Hi", bounds: CGRect(x: 0.1, y: 0.4, width: 0.04, height: 0.08))
+  let line = RecognizedTextLine(
+    text: "Hi", bounds: CGRect(x: 0.1, y: 0.4, width: 0.04, height: 0.08))
   let result = try TranslationImageRenderer.render(
     image, lines: [line], translated: [String(repeating: "A long translation ", count: 20)])
   #expect(result.hasTruncatedText)
@@ -84,7 +93,8 @@ private func translationPixels(_ image: CGImage) -> [UInt8] {
   context.setFillColor(NSColor.black.cgColor)
   context.fill(CGRect(x: 120, y: 31, width: 12, height: 2))
   let image = try #require(context.makeImage())
-  let line = RecognizedTextLine(text: "Text", bounds: CGRect(x: 0.2, y: 0.1, width: 0.5, height: 0.2))
+  let line = RecognizedTextLine(
+    text: "Text", bounds: CGRect(x: 0.2, y: 0.1, width: 0.5, height: 0.2))
   let output = try TranslationImageRenderer.render(image, lines: [line], translated: ["一"]).image
   let pixels = translationPixels(output)
   let index = ((100 - 1 - 32) * 200 + 125) * 4
@@ -143,9 +153,10 @@ private func translationPixels(_ image: CGImage) -> [UInt8] {
   defer { pin.window?.close() }
   var received: CGImage?
   pin.onTranslate = { received = $0 }
-  let event = try #require(NSEvent.mouseEvent(
-    with: .rightMouseDown, location: .zero, modifierFlags: [], timestamp: 0,
-    windowNumber: 0, context: nil, eventNumber: 0, clickCount: 1, pressure: 1))
+  let event = try #require(
+    NSEvent.mouseEvent(
+      with: .rightMouseDown, location: .zero, modifierFlags: [], timestamp: 0,
+      windowNumber: 0, context: nil, eventNumber: 0, clickCount: 1, pressure: 1))
   let menu = try #require(pin.imageView.menu(for: event))
   #expect(menu.items.contains { $0.action == #selector(PinWindowController.translateImage(_:)) })
   pin.translateImage(nil)
@@ -163,7 +174,11 @@ private func translationPixels(_ image: CGImage) -> [UInt8] {
   old.shortcuts["TYPE_COPY"] = Shortcut(12, [.option])
   try JSONEncoder().encode(old).write(to: url)
   let updated = SettingsStore(url: url).preferences
-  #expect(updated.tools == [.copy, .translate, .recognizeTable])
+  #expect(
+    updated.tools == [
+      .copy, .translate, .recognizeTable, .spotlight, .polyline, .magnify, .watermark, .autoRedact,
+      .recognizeDocument,
+    ])
   #expect(updated.shortcut("TYPE_COPY") == Shortcut(12, [.option]))
   #expect(updated.shortcut(Tool.translate.legacyName) == nil)
 }

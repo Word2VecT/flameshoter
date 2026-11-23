@@ -27,16 +27,21 @@
 - Save and cycle through capture regions per display.
 - Restore screenshot history on the same display and scale, and edit its annotations. History retains the original selected image, including before redaction; recording can be disabled and history cleared in Settings.
 - Vertical and horizontal scrolling captures with preview, cropping, copying, saving and pinning.
-- Record a region with frame rate, delay, audio, pause, preview and trimming; save as MP4, GIF or animated WebP.
-- In-app annotation: pencil, lines, arrows, shapes, text, numbers and redaction.
+- Record a region with frame rate, delay, audio, pause, preview and trimming; save as MP4, GIF or animated WebP. Optionally show mouse clicks, keyboard shortcuts and camera picture-in-picture.
+- In-app annotation: pencil, lines, polylines, arrows, shapes, spotlight, magnification, text, tiled watermarks, numbers and redaction.
+- Automatically redact locally recognized emails, phone numbers, URLs / IP addresses, labeled credentials and faces. Adjust or undo the results, and check them before sharing.
 - Copy, save, pin and share through the macOS share sheet.
-- Pin clipboard images, GIF and animated WebP, text, colors and files; restore open and recently closed pins after restarting.
-- Recognize text and QR codes offline in captures and pinned images; select text directly in images.
+- Pin clipboard images, GIF and animated WebP, text, colors and files; rotate, flip horizontally, lock and annotate pins. Restore open and recently closed pins after restarting.
+- Recognize text, QR codes and barcodes offline in captures and pinned images; select text directly in images.
 - Translate screenshots or pinned images on your Mac, edit the original and translated text, and create a translated image. Some languages require an initial system download.
 - Recognize tables in screenshots or pinned images on your Mac, edit cells, sort and adjust rows and columns, and save CSV or Excel files with recognized merged cells.
+- Recognize document text locally, proofread it and export Word, RTF, TXT or Markdown. Exports contain editable text paragraphs; complex layout and formula reconstruction are not supported yet.
 - Pick and copy colors in HEX, RGB, HSV and other formats; save as PNG, lossless WebP, PDF, AVIF and more. PNG optimization is optional.
+- Compare the original with the export preview, inspect pixel dimensions and file size, and adjust JPEG / AVIF quality before saving.
 - English, Simplified Chinese and customizable shortcuts.
 - Native Apple Liquid Glass interface.
+
+See the [PixPin feature comparison](docs/PIXPIN_PARITY.md) for offline coverage and remaining gaps.
 
 ## Usage
 
@@ -53,6 +58,10 @@ flameshoter config                 # Open settings
 
 Open Settings from the menu bar to change the language, tools and shortcuts. Run `flameshoter --help` for all command-line options.
 
+Click each polyline vertex, then double-click or press Return to finish. Backspace removes the last vertex; Esc discards the current polyline. Adjust spotlight, magnification and watermark parameters in Tool Settings. Use a pin's context menu to rotate, flip or annotate it; Return in the annotation window creates a new pin, and cancel returns to the original.
+
+Camera and keyboard overlays are off by default. Enabling them requests Camera or Input Monitoring access. Keyboard overlays show shortcuts and navigation keys, skipping ordinary text and secure input.
+
 ## Keyboard shortcuts
 
 These are the defaults. Shortcuts can be changed in Settings.
@@ -63,13 +72,17 @@ These are the defaults. Shortcuts can be changed in Settings.
 | P / D / A | Pencil / line / arrow |
 | R / C / M | Rectangle / ellipse / highlighter |
 | T / N / B | Text / number / redaction |
+| V / O / E / W | Polyline / spotlight / magnification / watermark |
+| ⇧B | Automatic redaction |
 | ⌘C / ⌘S / ⌘⇧S | Copy / save / share |
 | ⌘Z / ⌘⇧Z | Undo / redo |
 | ⌘P | Pin capture |
 | ⌃⇧2 / ⌃⇧3 | Pin clipboard / restore the last closed pin |
-| ⇧C / Q | Recognize text / QR code |
+| ⇧C / Q | Recognize text / QR codes and barcodes |
 | ⌥Q | Translate a screenshot or pinned image |
 | ⇧Q | Recognize a table in a screenshot or pinned image |
+| ⌥D | Recognize a document in a screenshot or pinned image |
+| L / Space (in a pin) | Lock pin / annotate again |
 | L | Scrolling capture |
 | G | Record screen |
 | F5 | Hold to view the screen and release to refresh the capture |

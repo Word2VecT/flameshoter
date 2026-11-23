@@ -113,6 +113,7 @@ def main():
             'LSApplicationCategoryType': 'public.app-category.productivity',
             'NSScreenCaptureUsageDescription': 'Flameshoter captures your screen to create screenshots or screen recordings.',
             'NSMicrophoneUsageDescription': 'Flameshoter records microphone audio only when you enable it for a screen recording.',
+            'NSCameraUsageDescription': 'Flameshoter includes camera video only when you enable Camera for a screen recording.',
             'NSHumanReadableCopyright': 'GPL-3.0-or-later. Based on Flameshot by Alejandro Sirgo Rica and contributors.',
             'FlameshoterRevision': revision,
         }

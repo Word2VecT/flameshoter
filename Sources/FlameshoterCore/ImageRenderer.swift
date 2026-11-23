@@ -34,13 +34,17 @@ public enum ImageError: LocalizedError {
       // makes redaction at the edge independent of pixels outside the user's selection.
       var selected = CaptureDocument(
         image: crop,
-        logicalSize: CGSize(width: pixelRect.width / document.scale, height: pixelRect.height / document.scale),
+        logicalSize: CGSize(
+          width: pixelRect.width / document.scale, height: pixelRect.height / document.scale),
         undoLimit: document.undoLimit)
-      selected.replaceAnnotations(document.annotations.map { original in
-        var annotation = original
-        annotation.move(by: CGSize(width: -pixelRect.minX / document.scale, height: -pixelRect.minY / document.scale))
-        return annotation
-      }, recordingUndo: false)
+      selected.replaceAnnotations(
+        document.annotations.map { original in
+          var annotation = original
+          annotation.move(
+            by: CGSize(
+              width: -pixelRect.minX / document.scale, height: -pixelRect.minY / document.scale))
+          return annotation
+        }, recordingUndo: false)
       return try render(selected, includeSelection: false)
     }
     let space = document.image.colorSpace ?? CGColorSpace(name: CGColorSpace.sRGB)!
@@ -60,10 +64,11 @@ public enum ImageError: LocalizedError {
     NSGraphicsContext.current = NSGraphicsContext(cgContext: context, flipped: true)
     for annotation in document.annotations {
       let source =
-        [.pixelate, .invert].contains(annotation.tool)
+        [.pixelate, .invert, .magnify].contains(annotation.tool)
         ? context.makeImage() ?? document.image : document.image
-      draw(annotation, in: context, source: source, scale: document.scale,
-           sourceBounds: document.selection == nil ? nil : document.pixelSelection)
+      draw(
+        annotation, in: context, source: source, scale: document.scale,
+        sourceBounds: document.selection == nil ? nil : document.pixelSelection)
     }
     NSGraphicsContext.restoreGraphicsState()
     guard let image = context.makeImage()?.cropping(to: pixelRect) else {
@@ -87,7 +92,7 @@ public enum ImageError: LocalizedError {
     context.setLineJoin(.round)
     context.setShouldAntialias(true)
     switch a.tool {
-    case .pencil, .marker, .line:
+    case .pencil, .marker, .line, .polyline:
       if a.tool == .marker { context.setAlpha(0.3) }
       context.beginPath()
       context.move(to: first)
@@ -127,6 +132,54 @@ public enum ImageError: LocalizedError {
     case .rectangle, .ellipse:
       if a.tool == .rectangle { context.addRect(r) } else { context.addEllipse(in: r) }
       context.drawPath(using: a.filled ? .fillStroke : .stroke)
+    case .spotlight:
+      let area =
+        sourceBounds.map {
+          CGRect(
+            x: $0.minX / scale, y: $0.minY / scale, width: $0.width / scale,
+            height: $0.height / scale)
+        }
+        ?? CGRect(
+          x: 0, y: 0, width: CGFloat(source.width) / scale, height: CGFloat(source.height) / scale)
+      context.addRect(area)
+      context.addRect(r)
+      context.setFillColor(CGColor(gray: 0, alpha: min(0.95, max(0, a.effectOpacity ?? 0.6))))
+      context.drawPath(using: .eoFill)
+      context.stroke(r)
+    case .magnify:
+      guard r.width > 1, r.height > 1 else { return }
+      let zoom = min(8, max(1.25, a.magnification ?? 2))
+      let available =
+        (sourceBounds ?? CGRect(x: 0, y: 0, width: source.width, height: source.height))
+      let sample = CGRect(
+        x: (r.midX - r.width / zoom / 2) * scale,
+        y: (r.midY - r.height / zoom / 2) * scale,
+        width: r.width / zoom * scale, height: r.height / zoom * scale
+      ).integral
+      guard available.contains(sample), let image = source.cropping(to: sample) else { return }
+      context.addEllipse(in: r)
+      context.clip()
+      drawUpright(image, in: r, context: context)
+      context.strokeEllipse(in: r.insetBy(dx: a.width / 2, dy: a.width / 2))
+    case .watermark:
+      guard !a.text.isEmpty, r.width > 1, r.height > 1 else { return }
+      context.clip(to: r)
+      context.setAlpha(min(1, max(0.05, a.effectOpacity ?? 0.25)))
+      let attributes: [NSAttributedString.Key: Any] = [
+        .font: NSFont.systemFont(ofSize: max(8, a.fontSize)), .foregroundColor: a.color.color,
+      ]
+      let text = a.text as NSString
+      let size = text.size(withAttributes: attributes)
+      let stepX = max(60, size.width + 48)
+      let stepY = max(40, size.height + 48)
+      context.translateBy(x: r.midX, y: r.midY)
+      context.rotate(by: -.pi / 6)
+      let radius = hypot(r.width, r.height)
+      for y in stride(from: -radius, through: radius, by: stepY) {
+        for x in stride(from: -radius, through: radius, by: stepX) {
+          text.draw(at: CGPoint(x: x, y: y), withAttributes: attributes)
+        }
+      }
     case .text:
       let base =
         a.font.isEmpty
@@ -171,8 +224,9 @@ public enum ImageError: LocalizedError {
           "CIPixellate", rect: r, width: a.width, context: context, source: source, scale: scale,
           sourceBounds: sourceBounds)
       } else {
-        redact(rect: r, block: max(4, a.width), context: context, source: source, scale: scale,
-               sourceBounds: sourceBounds)
+        redact(
+          rect: r, block: max(4, a.width), context: context, source: source, scale: scale,
+          sourceBounds: sourceBounds)
       }
     case .invert:
       drawFilter(
@@ -182,7 +236,8 @@ public enum ImageError: LocalizedError {
     }
   }
   private static func drawFilter(
-    _ name: String, rect: CGRect, width: Double, context: CGContext, source: CGImage, scale: CGFloat,
+    _ name: String, rect: CGRect, width: Double, context: CGContext, source: CGImage,
+    scale: CGFloat,
     sourceBounds: CGRect?
   ) {
     var pixel = CGRect(
@@ -198,9 +253,11 @@ public enum ImageError: LocalizedError {
     guard let image = filters.createCGImage(output, from: input.extent) else { return }
     context.saveGState()
     context.clip(to: rect)
-    drawUpright(image, in: CGRect(
-      x: pixel.minX / scale, y: pixel.minY / scale,
-      width: pixel.width / scale, height: pixel.height / scale), context: context)
+    drawUpright(
+      image,
+      in: CGRect(
+        x: pixel.minX / scale, y: pixel.minY / scale,
+        width: pixel.width / scale, height: pixel.height / scale), context: context)
     context.restoreGState()
   }
   private static func drawUpright(_ image: CGImage, in rect: CGRect, context: CGContext) {
@@ -211,42 +268,57 @@ public enum ImageError: LocalizedError {
     context.draw(image, in: CGRect(origin: .zero, size: rect.size))
     context.restoreGState()
   }
-  private static func redact(
-    rect: CGRect, block: CGFloat, context: CGContext, source: CGImage, scale: CGFloat,
-    sourceBounds: CGRect?
-  ) {
-    let w = source.width
-    let h = source.height
+  private static func fringeColors(
+    around r: CGRect, step: Int, source: CGImage, sourceBounds: CGRect?
+  ) -> [CGColor] {
+    // All samples are on the one-pixel border just outside the mask.
+    let imageBounds = CGRect(x: 0, y: 0, width: source.width, height: source.height)
+    let allowed = sourceBounds?.intersection(imageBounds) ?? imageBounds
+    let area = r.insetBy(dx: -1, dy: -1).intersection(allowed.integral)
+    guard !area.isEmpty, !r.contains(area) else { return [] }
     guard
+      let crop = source.cropping(to: area),
       let pixels = CGContext(
-        data: nil, width: w, height: h, bitsPerComponent: 8, bytesPerRow: w * 4,
+        data: nil, width: crop.width, height: crop.height, bitsPerComponent: 8,
+        bytesPerRow: crop.width * 4,
         space: CGColorSpace(name: CGColorSpace.sRGB)!,
         bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
-    else { return }
-    pixels.draw(source, in: CGRect(x: 0, y: 0, width: w, height: h))
-    guard let data = pixels.data?.assumingMemoryBound(to: UInt8.self) else { return }
-    let r = CGRect(
-      x: rect.minX * scale, y: rect.minY * scale, width: rect.width * scale,
-      height: rect.height * scale
-    ).integral
+    else { return [] }
+    pixels.draw(crop, in: CGRect(origin: .zero, size: area.size))
+    guard let data = pixels.data?.assumingMemoryBound(to: UInt8.self) else { return [] }
+    defer { withExtendedLifetime(pixels) {} }
+    let originX = Int(area.minX)
+    let originY = Int(area.minY)
+    let rowBytes = pixels.bytesPerRow
     var fringe: [CGColor] = []
     func sample(_ x: Int, _ y: Int) {
-      guard x >= 0, y >= 0, x < w, y < h else { return }
-      if let sourceBounds, !sourceBounds.contains(CGPoint(x: CGFloat(x) + 0.5, y: CGFloat(y) + 0.5)) { return }
-      let n = y * w * 4 + x * 4
+      guard allowed.contains(CGPoint(x: CGFloat(x) + 0.5, y: CGFloat(y) + 0.5)) else { return }
+      let n = (y - originY) * rowBytes + (x - originX) * 4
       fringe.append(
         CGColor(
           srgbRed: CGFloat(data[n]) / 255, green: CGFloat(data[n + 1]) / 255,
           blue: CGFloat(data[n + 2]) / 255, alpha: 1))
     }
-    for x in stride(from: Int(r.minX), to: Int(r.maxX), by: max(1, Int(block * scale))) {
+    for x in stride(from: Int(r.minX), to: Int(r.maxX), by: step) {
       sample(x, Int(r.minY) - 1)
       sample(x, Int(r.maxY))
     }
-    for y in stride(from: Int(r.minY), to: Int(r.maxY), by: max(1, Int(block * scale))) {
+    for y in stride(from: Int(r.minY), to: Int(r.maxY), by: step) {
       sample(Int(r.minX) - 1, y)
       sample(Int(r.maxX), y)
     }
+    return fringe
+  }
+  private static func redact(
+    rect: CGRect, block: CGFloat, context: CGContext, source: CGImage, scale: CGFloat,
+    sourceBounds: CGRect?
+  ) {
+    let r = CGRect(
+      x: rect.minX * scale, y: rect.minY * scale, width: rect.width * scale,
+      height: rect.height * scale
+    ).integral
+    var fringe = fringeColors(
+      around: r, step: max(1, Int(block * scale)), source: source, sourceBounds: sourceBounds)
     if fringe.isEmpty { fringe = [CGColor(gray: 0, alpha: 1)] }
     var index = 0
     context.saveGState()

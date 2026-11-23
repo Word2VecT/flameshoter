@@ -22,6 +22,8 @@ import UniformTypeIdentifiers
     if !supportedFormats.contains(where: { $0.0 == format }) { format = "png" }
     let name = FilenamePattern.render(filename ?? preferences.string("filenamePattern"))
     let url: URL
+    var quality = preferences.integer("jpegQuality")
+    var preparedData: Data?
     if let path {
       let requested = URL(fileURLWithPath: (path as NSString).expandingTildeInPath)
       var directory: ObjCBool = false
@@ -45,6 +47,10 @@ import UniformTypeIdentifiers
       panel.nameFieldStringValue = name + "." + format
       panel.canCreateDirectories = true
       let formats = supportedFormats
+      let preview = ImageExportPreview(
+        image: image, format: format, quality: quality,
+        optimize: preferences.bool("losslessCompression"))
+      preview.onQualityChange = { quality = $0 }
       let popup = ActionPopup(
         items: formats.map(\.1), selected: formats.firstIndex(where: { $0.0 == format }) ?? 0
       ) { index in
@@ -52,18 +58,33 @@ import UniformTypeIdentifiers
         panel.allowedContentTypes = [formats[index].2]
         let old = (panel.nameFieldStringValue as NSString).deletingPathExtension
         panel.nameFieldStringValue = old + "." + format
+        preview.request(format: format)
       }
       panel.accessoryView = padded(
-        stack([label(localized("Image format", "图片格式")), popup], vertical: false), inset: 8)
+        stack([stack([label(localized("Image format", "图片格式")), popup], vertical: false), preview]),
+        inset: 8)
       panel.allowedContentTypes = [formats[formats.firstIndex(where: { $0.0 == format }) ?? 0].2]
-      guard panel.runModal() == .OK, let chosen = panel.url else { return nil }
+      // Yield the main actor while the panel is open so preview tasks can update it.
+      let response: NSApplication.ModalResponse = await withCheckedContinuation { continuation in
+        panel.begin { continuation.resume(returning: $0) }
+      }
+      preparedData = preview.encodedData
+      preview.cancel()
+      guard response == .OK, let chosen = panel.url else { return nil }
       url = chosen
     }
-    let data = try await ImageEncoder.encode(
-      image, format: format, quality: preferences.integer("jpegQuality"),
-      optimize: preferences.bool("losslessCompression"))
+    let data: Data
+    if let preparedData {
+      data = preparedData
+    } else {
+      data = try await ImageEncoder.encode(
+        image, format: format, quality: quality, optimize: preferences.bool("losslessCompression"))
+    }
     try data.write(to: url, options: .atomic)
     Environment.shared.settings.set("savePath", url.deletingLastPathComponent().path)
+    if quality != preferences.integer("jpegQuality") {
+      Environment.shared.settings.set("jpegQuality", quality)
+    }
     if preferences.bool("copyPathAfterSave") {
       NSPasteboard.general.clearContents()
       NSPasteboard.general.setString(url.path, forType: .string)

@@ -24,6 +24,10 @@ import AppKit
   private var cursor: ActionCheck!
   private var systemAudio: ActionCheck!
   private var microphone: ActionCheck!
+  private var mouseClicks: ActionCheck!
+  private var shortcuts: ActionCheck!
+  private var camera: ActionCheck!
+  private var overlays: RecordingOverlays?
   private var startButton: ActionButton!
   private var pauseButton: ActionButton!
   private var stopButton: ActionButton!
@@ -72,6 +76,14 @@ import AppKit
     microphone = ActionCheck(localized("Microphone", "麦克风"), on: false) { [weak self] _ in
       self?.describeAudio()
     }
+    mouseClicks = ActionCheck(localized("Highlight clicks", "显示鼠标点击"), on: false) { _ in }
+    shortcuts = ActionCheck(localized("Show shortcuts", "显示键盘快捷键"), on: false) { _ in }
+    shortcuts.toolTip = localized(
+      "Requires Input Monitoring. Displays shortcuts and navigation keys; skips ordinary typing and secure input.",
+      "需要输入监控权限。显示快捷键和导航按键，跳过普通输入及安全输入。")
+    camera = ActionCheck(localized("Camera", "摄像头"), on: false) { _ in }
+    camera.toolTip = localized(
+      "Show the camera in the lower-right corner of the selected region.", "在选区右下角叠加摄像头画面。")
     startButton = ActionButton(localized("Record", "开始录制"), symbol: "record.circle") {
       [weak self] in
       self?.start(resuming: false)
@@ -89,7 +101,9 @@ import AppKit
     let toggles = stack([cursor, systemAudio, microphone], vertical: false, spacing: 12)
     let buttons = stack(
       [startButton, pauseButton, stopButton, cancel], vertical: false, spacing: 8)
-    panel.contentView = padded(stack([options, toggles, status, buttons], spacing: 12), inset: 16)
+    let overlaysRow = stack([mouseClicks, shortcuts, camera], vertical: false, spacing: 12)
+    panel.contentView = padded(
+      stack([options, toggles, overlaysRow, status, buttons], spacing: 12), inset: 16)
     let screenSelection = CGRect(
       x: screen.frame.minX + selection.minX, y: screen.frame.maxY - selection.maxY,
       width: selection.width, height: selection.height)
@@ -114,7 +128,9 @@ import AppKit
   private func refresh() {
     guard startButton != nil else { return }
     let ready = phase == .ready
-    for control in [rate, delay, cursor, systemAudio, microphone] as [NSControl] {
+    for control in [rate, delay, cursor, systemAudio, microphone, mouseClicks, shortcuts, camera]
+      as [NSControl]
+    {
       control.isEnabled = ready
     }
     startButton.isEnabled = ready
@@ -140,7 +156,8 @@ import AppKit
     cancelRequested = false
     let options = RecordingOptions(
       framesPerSecond: rates[rate.indexOfSelectedItem], showsCursor: cursor.state == .on,
-      systemAudio: systemAudio.state == .on, microphone: microphone.state == .on)
+      systemAudio: systemAudio.state == .on, microphone: microphone.state == .on,
+      showMouseClicks: mouseClicks.state == .on)
     let countdown = resuming ? 0 : delays[delay.indexOfSelectedItem]
     task = Task {
       do {
@@ -157,11 +174,17 @@ import AppKit
         try FileManager.default.createDirectory(
           at: folder, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
         status.stringValue = localized("Starting recording…", "正在开始录制…")
+        overlays = try await RecordingOverlays.start(
+          screen: screen, selection: selection,
+          camera: camera.state == .on, shortcuts: shortcuts.state == .on)
+        try Task.checkCancellation()
         let url = folder.appendingPathComponent("segment-\(UUID().uuidString).mp4")
         let current = try await RecordingSegment.start(
-          screen: screen, selection: selection, options: options, url: url)
+          screen: screen, selection: selection, options: options, url: url,
+          overlayWindowIDs: overlays?.windowIDs ?? [])
         if Task.isCancelled || cancelRequested {
           _ = try? await current.stop()
+          await stopOverlays()
           finish()
           return
         }
@@ -175,6 +198,7 @@ import AppKit
         }
         updateTime()
       } catch {
+        await stopOverlays()
         if cancelRequested || error is CancellationError {
           finish()
           return
@@ -238,7 +262,13 @@ import AppKit
     startedAt = nil
     guard let current = segment else { throw RecordingError.empty }
     segment = nil
-    segments.append(try await current.stop())
+    do {
+      segments.append(try await current.stop())
+      await stopOverlays()
+    } catch {
+      await stopOverlays()
+      throw error
+    }
   }
 
   private func recordingFailed(_ error: Error) {
@@ -246,6 +276,7 @@ import AppKit
     phase = .finishing
     task = Task {
       if let current = segment { _ = try? await current.stop() }
+      await stopOverlays()
       segment = nil
       timer?.invalidate()
       timer = nil
@@ -265,7 +296,20 @@ import AppKit
         "Allow microphone access in System Settings to record microphone audio.",
         "请在系统设置中允许 Flameshoter 使用麦克风。")
     } else {
-      message = errorMessage(error)
+      switch error {
+      case RecordingError.cameraPermission:
+        message = localized(
+          "Allow camera access in System Settings, then retry recording.",
+          "请在系统设置中允许 Flameshoter 使用摄像头，然后重试。")
+      case RecordingError.cameraUnavailable:
+        message = localized(
+          "Connect a camera or turn off Camera, then retry.", "请连接摄像头，或关闭摄像头选项后重试。")
+      case RecordingError.inputMonitoringPermission:
+        message = localized(
+          "Allow Input Monitoring in System Settings and restart Flameshoter, or turn off Show shortcuts.",
+          "请在系统设置中允许输入监控并重启 Flameshoter，或关闭显示快捷键选项。")
+      default: message = errorMessage(error)
+      }
     }
     status.stringValue = localized("Recording failed", "录制失败")
     warning(localized("Unable to record screen", "无法录制屏幕"), message, window: panel)
@@ -289,6 +333,7 @@ import AppKit
     phase = .discarding
     task = Task {
       if let current = segment { _ = try? await current.stop() }
+      await stopOverlays()
       segment = nil
       finish()
     }
@@ -313,5 +358,16 @@ import AppKit
     timer?.invalidate()
     panel.delegate = nil
     panel.close()
+    let current = segment
+    segment = nil
+    Task {
+      if let current { _ = try? await current.stop() }
+      await stopOverlays()
+    }
+  }
+  private func stopOverlays() async {
+    let current = overlays
+    overlays = nil
+    await current?.stop()
   }
 }

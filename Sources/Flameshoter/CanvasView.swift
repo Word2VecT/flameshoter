@@ -62,6 +62,7 @@ import FlameshoterCore
   var handles: [PassiveImageView] = []
   var textEditor: NSTextView?
   private var textDraft: Annotation?
+  private var polylinePoints: [CGPoint] = []
   private var editingTextID: UUID?
   private var tracking: NSTrackingArea?
   private var dimensionsTimer: Timer?
@@ -96,7 +97,9 @@ import FlameshoterCore
     automaticWindows = frame.windows
     displayFrame = frame.displayFrame
     automaticMode = Environment.shared.preferences.integer("autoSelectionMode")
-    colorFormat = ScreenColor.Format(rawValue: Environment.shared.preferences.integer("screenColorFormat")) ?? .hashHex
+    colorFormat =
+      ScreenColor.Format(rawValue: Environment.shared.preferences.integer("screenColorFormat"))
+      ?? .hashHex
     document = CaptureDocument(
       image: frame.image, logicalSize: frame.logicalSize,
       undoLimit: Environment.shared.preferences.integer("undoLimit"))
@@ -220,7 +223,10 @@ import FlameshoterCore
       composed.replaceAnnotations(composed.annotations + [preview], recordingUndo: false)
     }
     // Redaction and filters sample only inside the selection, so their previews depend on it.
-    let sourceBounds = composed.annotations.contains(where: { [.pixelate, .invert].contains($0.tool) })
+    let sourceBounds =
+      composed.annotations.contains(where: {
+        [.pixelate, .invert, .magnify, .spotlight].contains($0.tool)
+      })
       ? composed.selection : nil
     if composed.annotations != renderedAnnotations || sourceBounds != renderedSourceBounds,
       let image = try? ImageRenderer.render(composed, includeSelection: false)
@@ -325,6 +331,7 @@ import FlameshoterCore
   }
   func setTool(_ tool: Tool?) {
     commitText()
+    finishPolyline()
     self.tool = self.tool == tool ? nil : tool
     selectedID = nil
     refresh()
@@ -350,6 +357,11 @@ import FlameshoterCore
   }
   func applyStyle(_ body: (inout Annotation) -> Void) {
     updateSelected(body)
+    if var annotation = preview {
+      body(&annotation)
+      preview = annotation
+      redrawContent()
+    }
     if var draft = textDraft {
       body(&draft)
       textDraft = draft
@@ -375,6 +387,7 @@ import FlameshoterCore
   }
   func rendered() throws -> CGImage {
     commitText()
+    finishPolyline()
     return try ImageRenderer.render(sourceDocument().document)
   }
   func sourceDocument() -> (document: CaptureDocument, origin: CGPoint) {
@@ -382,20 +395,23 @@ import FlameshoterCore
     let origin = snapshot.entry.rectangle.origin
     var source = snapshot.document(undoLimit: document.undoLimit)
     source.selection = document.selection?.offsetBy(dx: -origin.x, dy: -origin.y)
-    source.replaceAnnotations(document.annotations.map { original in
-      var annotation = original
-      annotation.move(by: CGSize(width: -origin.x, height: -origin.y))
-      return annotation
-    }, recordingUndo: false)
+    source.replaceAnnotations(
+      document.annotations.map { original in
+        var annotation = original
+        annotation.move(by: CGSize(width: -origin.x, height: -origin.y))
+        return annotation
+      }, recordingUndo: false)
     return (source, origin)
   }
   func replaceDocument(
-    _ replacement: CaptureDocument, history: CaptureHistorySnapshot? = nil, edits: UndoManager? = nil
+    _ replacement: CaptureDocument, history: CaptureHistorySnapshot? = nil,
+    edits: UndoManager? = nil
   ) {
     commitText()
     document = replacement
     historySnapshot = history
     preview = nil
+    polylinePoints = []
     selectedID = nil
     operation = nil
     originalAnnotations = nil
@@ -428,7 +444,8 @@ import FlameshoterCore
   private func point(_ event: NSEvent) -> CGPoint { convert(event.locationInWindow, from: nil) }
   private func bounded(_ point: CGPoint) -> CGPoint {
     let area = historySnapshot?.entry.rectangle ?? bounds
-    return CGPoint(x: min(max(area.minX, point.x), area.maxX), y: min(max(area.minY, point.y), area.maxY))
+    return CGPoint(
+      x: min(max(area.minX, point.x), area.maxX), y: min(max(area.minY, point.y), area.maxY))
   }
   private func suggest(_ rect: CGRect?) {
     guard suggestedSelection != rect else { return }
@@ -508,6 +525,13 @@ import FlameshoterCore
     a.outlinedCounter = prefs.bool("drawCircleCounterOutline")
     a.traditionalPixelation = prefs.bool("insecurePixelate")
     a.filled = prefs.bool("filledShapes")
+    a.magnification = Double(prefs.integer("magnification")) / 100
+    if tool == .watermark {
+      a.text = prefs.string("watermarkText")
+      a.effectOpacity = Double(prefs.integer("watermarkOpacity")) / 100
+    } else if tool == .spotlight {
+      a.effectOpacity = Double(prefs.integer("spotlightOpacity")) / 100
+    }
     a.number = (document.annotations.filter { $0.tool == .counter }.map(\.number).max() ?? 0) + 1
     return a
   }
@@ -520,6 +544,22 @@ import FlameshoterCore
       return
     }
     let p = bounded(point(event))
+    if tool == .polyline, let r = document.selection, r.contains(p) {
+      if polylinePoints.isEmpty {
+        polylinePoints = [p]
+      } else if hypot(p.x - polylinePoints.last!.x, p.y - polylinePoints.last!.y) > 0.5 {
+        polylinePoints.append(p)
+      }
+      if event.clickCount == 2 {
+        finishPolyline()
+      } else {
+        var annotation = newAnnotation(.polyline, p)
+        annotation.points = polylinePoints + [p]
+        preview = annotation
+        refresh()
+      }
+      return
+    }
     if event.clickCount == 2, tool == .select, let text = document.annotation(at: p),
       text.tool == .text
     {
@@ -591,7 +631,8 @@ import FlameshoterCore
           y: start.y + (p.y >= start.y ? length : -length))
       }
       setSelection(
-        CGRect(x: start.x, y: start.y, width: end.x - start.x, height: end.y - start.y).standardized)
+        CGRect(x: start.x, y: start.y, width: end.x - start.x, height: end.y - start.y).standardized
+      )
     case .region(let start):
       var end = p
       if event.modifierFlags.contains(.shift) {
@@ -652,6 +693,7 @@ import FlameshoterCore
     }
   }
   override func mouseUp(with event: NSEvent) {
+    if !polylinePoints.isEmpty { return }
     if case .automatic(_, let region) = operation { setSelection(region) }
     if case .drawing = operation, let a = preview,
       [.pencil, .marker].contains(a.tool) || a.bounds.width > 0.5 || a.bounds.height > 0.5
@@ -675,6 +717,10 @@ import FlameshoterCore
     if settled { onRegionSettled?() }
   }
   override func rightMouseDown(with event: NSEvent) {
+    if !polylinePoints.isEmpty {
+      finishPolyline()
+      return
+    }
     commitText()
     if let a = document.annotation(at: point(event)) {
       selectedID = a.id
@@ -683,19 +729,28 @@ import FlameshoterCore
     onInspector?()
   }
   override func mouseMoved(with event: NSEvent) {
+    if !polylinePoints.isEmpty, var annotation = preview {
+      annotation.points = polylinePoints + [bounded(point(event))]
+      preview = annotation
+      redrawContent()
+      return
+    }
     updateAutomaticSelection(at: point(event))
     updateMagnifier(at: point(event), modifiers: event.modifierFlags)
   }
   private func updateMagnifier(at p: CGPoint, modifiers: NSEvent.ModifierFlags) {
     let temporary = modifiers.contains(.option)
-    guard bounds.contains(p), temporary || (prefs.bool("showMagnifier") && tool?.isDrawing != true) else {
+    guard bounds.contains(p), temporary || (prefs.bool("showMagnifier") && tool?.isDrawing != true)
+    else {
       magnifier.isHidden = true
       colorReadout.isHidden = true
       return
     }
     let scale = document.scale
     let side = 17
-    guard let image = ScreenColor.neighborhood(document.image, point: p, scale: scale) else { return }
+    guard let image = ScreenColor.neighborhood(document.image, point: p, scale: scale) else {
+      return
+    }
     magnifierImage.image = NSImage(cgImage: image, size: CGSize(width: side, height: side))
     magnifier.frame = CGRect(
       x: max(0, min(bounds.width - 140, p.x + 24)),
@@ -708,7 +763,9 @@ import FlameshoterCore
         x: max(0, min(bounds.width - 170, magnifier.frame.midX - 85)),
         y: magnifier.frame.maxY + 4, width: 170, height: 30)
       colorReadout.isHidden = false
-    } else { colorReadout.isHidden = true }
+    } else {
+      colorReadout.isHidden = true
+    }
   }
   override func flagsChanged(with event: NSEvent) {
     let flags = event.modifierFlags.intersection(Shortcut.relevant)
@@ -718,7 +775,8 @@ import FlameshoterCore
     }
     lastModifiers = flags
     if let window {
-      updateMagnifier(at: convert(window.mouseLocationOutsideOfEventStream, from: nil), modifiers: flags)
+      updateMagnifier(
+        at: convert(window.mouseLocationOutsideOfEventStream, from: nil), modifiers: flags)
     }
     super.flagsChanged(with: event)
   }
@@ -742,7 +800,13 @@ import FlameshoterCore
     guard let tool, tool.isDrawing else { return }
     let n = min(500, max(1, prefs.integer(tool.sizeKey) + (event.scrollingDeltaY > 0 ? 1 : -1)))
     Environment.shared.settings.set(tool.sizeKey, n)
-    updateSelected { if $0.tool == .text { $0.fontSize = Double(n) } else { $0.width = Double(n) } }
+    updateSelected {
+      if $0.tool == .text || $0.tool == .watermark {
+        $0.fontSize = Double(n)
+      } else {
+        $0.width = Double(n)
+      }
+    }
     onChange?()
   }
   private func configureText(_ view: NSTextView, annotation a: Annotation) {
@@ -835,6 +899,24 @@ import FlameshoterCore
     refresh()
   }
   func handleKey(_ event: NSEvent) -> Bool {
+    if !polylinePoints.isEmpty {
+      if event.keyCode == 53 {
+        polylinePoints = []
+        preview = nil
+        refresh()
+        return true
+      }
+      if event.keyCode == 36 || event.keyCode == 76 {
+        finishPolyline()
+        return true
+      }
+      if event.keyCode == 51 {
+        polylinePoints.removeLast()
+        if polylinePoints.isEmpty { preview = nil } else { preview?.points = polylinePoints }
+        refresh()
+        return true
+      }
+    }
     if prefs.shortcut(Tool.refreshCapture.legacyName)?.matches(event) == true {
       if refreshKeyCode == nil, !event.isARepeat, onRefreshStart?() == true {
         refreshKeyCode = event.keyCode
@@ -858,12 +940,15 @@ import FlameshoterCore
       return false
     }
     if prefs.shortcut("TYPE_COPY_PIXEL_COLOR")?.matches(event) == true {
-      if let window, let color = ScreenColor.sample(
-        document.image, point: convert(window.mouseLocationOutsideOfEventStream, from: nil),
-        scale: document.scale)
+      if let window,
+        let color = ScreenColor.sample(
+          document.image, point: convert(window.mouseLocationOutsideOfEventStream, from: nil),
+          scale: document.scale)
       {
         onCopyColor?(color.string(colorFormat))
-      } else { NSSound.beep() }
+      } else {
+        NSSound.beep()
+      }
       return true
     }
     if event.keyCode == 53 {
@@ -944,6 +1029,14 @@ import FlameshoterCore
     return false
   }
   @objc func copy(_ sender: Any?) { onAction?(.copy) }
+  func finishPolyline() {
+    guard !polylinePoints.isEmpty else { return }
+    var annotation = preview ?? newAnnotation(.polyline, polylinePoints[0])
+    annotation.points = polylinePoints
+    polylinePoints = []
+    preview = nil
+    if annotation.points.count > 1 { add(annotation) } else { refresh() }
+  }
   override func selectAll(_ sender: Any?) {
     setSelection(bounds)
     onRegionSettled?()

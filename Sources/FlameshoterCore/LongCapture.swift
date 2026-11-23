@@ -140,7 +140,8 @@ enum LongCaptureMatcher {
   static func distance(from old: CGImage, to new: CGImage, direction: LongCaptureDirection) throws
     -> Int?
   {
-    if score(old, new, offset: 0, direction: direction)?.error == 0 { return 0 }
+    let stationary = score(old, new, offset: 0, direction: direction)
+    if stationary?.error == 0 { return 0 }
     let request = VNTranslationalImageRegistrationRequest(targetedCGImage: old)
     try VNImageRequestHandler(cgImage: new).perform([request])
     guard let transform = request.results?.first?.alignmentTransform else { return nil }
@@ -149,9 +150,13 @@ enum LongCaptureMatcher {
     let candidates = [proposed, proposed - 1, proposed + 1, proposed - 2, proposed + 2, 0]
     var best: (distance: Int, error: Double, contrast: Double)?
     for candidate in candidates where abs(candidate) <= side * 3 / 4 {
-      guard let score = score(old, new, offset: candidate, direction: direction) else { continue }
+      let comparison =
+        candidate == 0 ? stationary : score(old, new, offset: candidate, direction: direction)
+      guard let score = comparison else { continue }
       if best == nil || score.error < best!.error {
         best = (candidate, score.error, score.contrast)
+        // Ties keep the first candidate, and no error can be smaller than zero.
+        if score.error == 0 { break }
       }
     }
     guard let best, best.error < 5, best.distance == 0 || best.contrast > 3 else { return nil }

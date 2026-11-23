@@ -11,6 +11,9 @@ struct ArchivedPin: Codable, Sendable {
   var frame: CGRect
   var opacity: Double
   var payloadFile: String
+  var quarterTurns: Int?
+  var mirrored: Bool?
+  var locked: Bool?
 }
 
 struct LoadedPin: Sendable {

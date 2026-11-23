@@ -19,7 +19,8 @@ import Testing
 @Test @MainActor func refreshingPreservesSelectionAnnotationsAndUndo() {
   let canvas = CanvasView(frame: refreshFrame(.red))
   canvas.setSelection(CGRect(x: 100, y: 100, width: 200, height: 150))
-  let annotation = Annotation(tool: .arrow, points: [CGPoint(x: 120, y: 120), CGPoint(x: 200, y: 180)])
+  let annotation = Annotation(
+    tool: .arrow, points: [CGPoint(x: 120, y: 120), CGPoint(x: 200, y: 180)])
   canvas.edits.groupsByEvent = false
   canvas.edits.beginUndoGrouping()
   canvas.add(annotation)
@@ -46,10 +47,14 @@ import Testing
   let canvas = CanvasView(frame: refreshFrame(.red))
   var started = 0
   var ended = 0
-  canvas.onRefreshStart = { started += 1; return true }
+  canvas.onRefreshStart = {
+    started += 1
+    return true
+  }
   canvas.onRefreshEnd = { ended += 1 }
   func key(_ type: NSEvent.EventType, repeatKey: Bool = false) -> NSEvent {
-    NSEvent.keyEvent(with: type, location: .zero, modifierFlags: [], timestamp: 0,
+    NSEvent.keyEvent(
+      with: type, location: .zero, modifierFlags: [], timestamp: 0,
       windowNumber: 0, context: nil, characters: "", charactersIgnoringModifiers: "",
       isARepeat: repeatKey, keyCode: 96)!
   }
@@ -64,8 +69,9 @@ import Testing
   let old = refreshFrame(.red)
   let updated = refreshFrame(.blue)
   let controller = AppController(command: nil)
-  let session = CaptureSession(frames: [old], command: NativeCommand(), app: controller,
-                               refreshSource: { [updated] })
+  let session = CaptureSession(
+    frames: [old], command: NativeCommand(), app: controller,
+    refreshSource: { [updated] })
   let surface = session.active
   defer {
     surface.toolbar.close()
@@ -73,17 +79,20 @@ import Testing
   }
   let canvas = surface.canvas
   canvas.setSelection(CGRect(x: 100, y: 100, width: 200, height: 150))
-  let annotation = Annotation(tool: .arrow, points: [CGPoint(x: 120, y: 120), CGPoint(x: 200, y: 180)])
+  let annotation = Annotation(
+    tool: .arrow, points: [CGPoint(x: 120, y: 120), CGPoint(x: 200, y: 180)])
   canvas.add(annotation)
   let previousOpacity = surface.window.isOpaque
   let previousAlpha = canvas.alphaValue
   let previousMouse = surface.window.ignoresMouseEvents
-  let keyDown = try #require(NSEvent.keyEvent(
-    with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0, windowNumber: 0,
-    context: nil, characters: "", charactersIgnoringModifiers: "", isARepeat: false, keyCode: 96))
-  let keyUp = try #require(NSEvent.keyEvent(
-    with: .keyUp, location: .zero, modifierFlags: [], timestamp: 0, windowNumber: 0,
-    context: nil, characters: "", charactersIgnoringModifiers: "", isARepeat: false, keyCode: 96))
+  let keyDown = try #require(
+    NSEvent.keyEvent(
+      with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0, windowNumber: 0,
+      context: nil, characters: "", charactersIgnoringModifiers: "", isARepeat: false, keyCode: 96))
+  let keyUp = try #require(
+    NSEvent.keyEvent(
+      with: .keyUp, location: .zero, modifierFlags: [], timestamp: 0, windowNumber: 0,
+      context: nil, characters: "", charactersIgnoringModifiers: "", isARepeat: false, keyCode: 96))
   #expect(canvas.handleKey(keyDown))
   #expect(canvas.alphaValue == 0 && !surface.window.isOpaque && surface.window.ignoresMouseEvents)
   canvas.keyUp(with: keyUp)
@@ -106,7 +115,11 @@ import Testing
   old.shortcuts["TYPE_PENCIL"] = Shortcut(96)
   try JSONEncoder().encode(old).write(to: url)
   let updated = SettingsStore(url: url).preferences
-  #expect(updated.tools == [.copy, .refreshCapture, .translate, .recognizeTable])
+  #expect(
+    updated.tools == [
+      .copy, .refreshCapture, .translate, .recognizeTable, .spotlight, .polyline, .magnify,
+      .watermark, .autoRedact, .recognizeDocument,
+    ])
   #expect(updated.shortcut("TYPE_PENCIL") == Shortcut(96))
   #expect(updated.shortcut(Tool.refreshCapture.legacyName) == nil)
 }

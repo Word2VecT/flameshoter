@@ -71,10 +71,19 @@ public enum Tool: Int, Codable, CaseIterable, Identifiable, Sendable {
   case refreshCapture = 30
   case translate = 31
   case recognizeTable = 32
+  case spotlight = 33
+  case polyline = 34
+  case magnify = 35
+  case watermark = 36
+  case autoRedact = 37
+  case recognizeDocument = 38
   // Preserve Flameshot's getIterableButtonTypes() order, adding native Share after Save.
   public static let toolbarOrder: [Tool] = [
-    .pencil, .line, .arrow, .select, .rectangle, .ellipse, .marker, .text,
-    .counter, .pixelate, .invert, .moveSelection, .undo, .redo, .refreshCapture, .longCapture, .screenRecording, .recognizeText, .recognizeQRCode, .translate, .recognizeTable,
+    .pencil, .line, .polyline, .arrow, .select, .rectangle, .ellipse, .spotlight, .marker, .magnify,
+    .text, .watermark,
+    .counter, .pixelate, .autoRedact, .invert, .moveSelection, .undo, .redo, .refreshCapture,
+    .longCapture, .screenRecording, .recognizeText, .recognizeQRCode, .translate, .recognizeTable,
+    .recognizeDocument,
     .copy, .save, .share,
     .exit, .pin, .sizeIncrease, .sizeDecrease, .accept,
   ]
@@ -83,13 +92,22 @@ public enum Tool: Int, Codable, CaseIterable, Identifiable, Sendable {
   }
   public var id: Int { rawValue }
   public var isDrawing: Bool {
-    [.pencil, .line, .arrow, .rectangle, .ellipse, .marker, .pixelate, .text, .counter, .invert]
-      .contains(self)
+    [
+      .pencil, .line, .polyline, .arrow, .rectangle, .ellipse, .spotlight, .marker, .magnify,
+      .watermark, .pixelate, .text, .counter, .invert,
+    ]
+    .contains(self)
   }
   public var title: (String, String) {
     switch self {
     case .pencil: return ("Pencil", "画笔")
     case .line: return ("Line", "直线")
+    case .polyline: return ("Polyline", "折线")
+    case .spotlight: return ("Spotlight", "聚光灯")
+    case .magnify: return ("Magnify annotation", "放大镜标注")
+    case .watermark: return ("Watermark", "水印")
+    case .autoRedact: return ("Automatically redact", "自动打码")
+    case .recognizeDocument: return ("Recognize document", "文档识别")
     case .arrow: return ("Arrow", "箭头")
     case .select: return ("Select annotation", "选择标注")
     case .rectangle: return ("Rectangle", "矩形")
@@ -101,7 +119,7 @@ public enum Tool: Int, Codable, CaseIterable, Identifiable, Sendable {
     case .save: return ("Save", "保存")
     case .share: return ("Share", "分享")
     case .recognizeText: return ("Recognize text", "文字识别")
-    case .recognizeQRCode: return ("Recognize QR code", "识别二维码")
+    case .recognizeQRCode: return ("Recognize QR / barcode", "识别二维码 / 条码")
     case .longCapture: return ("Scrolling capture", "长截图")
     case .screenRecording: return ("Record screen", "录制屏幕")
     case .refreshCapture: return ("Refresh screenshot", "刷新截图")
@@ -125,6 +143,12 @@ public enum Tool: Int, Codable, CaseIterable, Identifiable, Sendable {
     switch self {
     case .pencil: return "pencil.tip"
     case .line: return "line.diagonal"
+    case .polyline: return "point.topleft.down.to.point.bottomright.curvepath"
+    case .spotlight: return "flashlight.on.fill"
+    case .magnify: return "plus.magnifyingglass"
+    case .watermark: return "text.badge.checkmark"
+    case .autoRedact: return "eye.slash"
+    case .recognizeDocument: return "doc.text.viewfinder"
     case .arrow: return "arrow.up.right"
     case .select: return "cursorarrow"
     case .rectangle: return "rectangle"
@@ -169,6 +193,8 @@ public enum Tool: Int, Codable, CaseIterable, Identifiable, Sendable {
       .refreshCapture: "REFRESH_CAPTURE",
       .translate: "TRANSLATE",
       .recognizeTable: "RECOGNIZE_TABLE",
+      .spotlight: "SPOTLIGHT", .polyline: "POLYLINE", .magnify: "MAGNIFY",
+      .watermark: "WATERMARK", .autoRedact: "AUTO_REDACT", .recognizeDocument: "RECOGNIZE_DOCUMENT",
     ]
     return "TYPE_" + names[self]!
   }
@@ -178,6 +204,7 @@ public enum Tool: Int, Codable, CaseIterable, Identifiable, Sendable {
     case .marker: return "drawMarkerSize"
     case .pixelate: return "drawPixelateSize"
     case .text: return "drawFontSize"
+    case .watermark: return "drawFontSize"
     case .counter: return "drawCircleCounterSize"
     default: return "drawThickness"
     }
@@ -204,6 +231,9 @@ public struct Annotation: Codable, Equatable, Identifiable, Sendable {
   public var curvedArrow = false
   public var outlinedCounter = true
   public var traditionalPixelation = false
+  // Optional fields keep pre-existing editable capture archives decodable.
+  public var magnification: Double?
+  public var effectOpacity: Double?
   public init(tool: Tool, points: [CGPoint], color: RGBA = .red, width: Double = 3) {
     self.tool = tool
     self.points = points
@@ -234,7 +264,7 @@ public struct Annotation: Codable, Equatable, Identifiable, Sendable {
   public func hitTest(_ point: CGPoint, tolerance: CGFloat = 7) -> Bool {
     guard bounds.insetBy(dx: -max(tolerance, width), dy: -max(tolerance, width)).contains(point)
     else { return false }
-    if [.pencil, .marker, .line, .arrow].contains(tool), points.count > 1 {
+    if [.pencil, .marker, .line, .polyline, .arrow].contains(tool), points.count > 1 {
       return zip(points, points.dropFirst()).contains { a, b in
         let dx = b.x - a.x
         let dy = b.y - a.y

@@ -1,3 +1,4 @@
 "CFBundleDisplayName" = "Flameshoter";
 "NSScreenCaptureUsageDescription" = "Flameshoter 需要访问屏幕以截图和录屏。";
 "NSMicrophoneUsageDescription" = "仅在你为屏幕录制启用麦克风时，Flameshoter 才会录制麦克风声音。";
+"NSCameraUsageDescription" = "仅在你为屏幕录制启用摄像头时，Flameshoter 才会采集并叠加摄像头画面。";
