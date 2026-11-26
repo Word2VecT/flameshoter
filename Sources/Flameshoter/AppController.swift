@@ -154,28 +154,26 @@ import UserNotifications
       }
     }
     Environment.shared.captureHistory.flush { [weak self] _ in
-      Task { @MainActor [weak self] in self?.finishTermination() }
+      self?.finishTermination()
     }
     return .terminateLater
   }
   private func finishTermination() {
     pinArchive.flush { [weak self] result in
-      Task { @MainActor [weak self] in
-        if case .success = result, self?.pinArchiveFailure == nil {
-          NSApp.reply(toApplicationShouldTerminate: true)
-        } else {
-          let alert = NSAlert()
-          alert.messageText = localized("Pin history could not be saved", "贴图历史保存失败")
-          alert.informativeText = localized(
-            "Save important pins separately before quitting, or continue and discard unsaved history.",
-            "退出前请另存重要贴图；继续退出可能丢失未保存的贴图历史。")
-          alert.addButton(withTitle: localized("Keep using Flameshoter", "继续使用"))
-          alert.addButton(withTitle: localized("Quit anyway", "仍然退出"))
-          let shouldQuit = alert.runModal() == .alertSecondButtonReturn
-          self?.terminating = shouldQuit
-          if !shouldQuit { self?.cancelRestart() }
-          NSApp.reply(toApplicationShouldTerminate: shouldQuit)
-        }
+      if case .success = result, self?.pinArchiveFailure == nil {
+        NSApp.reply(toApplicationShouldTerminate: true)
+      } else {
+        let alert = NSAlert()
+        alert.messageText = localized("Pin history could not be saved", "贴图历史保存失败")
+        alert.informativeText = localized(
+          "Save important pins separately before quitting, or continue and discard unsaved history.",
+          "退出前请另存重要贴图；继续退出可能丢失未保存的贴图历史。")
+        alert.addButton(withTitle: localized("Keep using Flameshoter", "继续使用"))
+        alert.addButton(withTitle: localized("Quit anyway", "仍然退出"))
+        let shouldQuit = alert.runModal() == .alertSecondButtonReturn
+        self?.terminating = shouldQuit
+        if !shouldQuit { self?.cancelRestart() }
+        NSApp.reply(toApplicationShouldTerminate: shouldQuit)
       }
     }
   }

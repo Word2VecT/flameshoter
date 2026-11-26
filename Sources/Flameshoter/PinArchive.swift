@@ -153,11 +153,13 @@ final class PinArchive: @unchecked Sendable {
     }
   }
 
-  func flush(_ completion: @escaping @Sendable (Result<Void, Error>) -> Void) {
+  func flush(_ completion: @escaping @MainActor @Sendable (Result<Void, Error>) -> Void) {
     queue.async {
       let result: Result<Void, Error> =
         (self.loadFailure ?? self.writeFailure).map { .failure($0) } ?? .success(())
-      DispatchQueue.main.async { completion(result) }
+      RunLoop.main.perform(inModes: [.common, .modalPanel]) {
+        MainActor.assumeIsolated { completion(result) }
+      }
     }
   }
 

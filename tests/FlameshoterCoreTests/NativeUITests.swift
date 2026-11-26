@@ -13,6 +13,28 @@ import Testing
     bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!.makeImage()!
   return CapturedScreen(image: image, screen: NSScreen.main!)
 }
+@Test @MainActor func historyFlushesCompleteWhileAppKitWaitsInModalMode() {
+  let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+  let captures = CaptureHistory(directory: root) { _ in }
+  let pins = PinArchive(directory: root) { _ in }
+  let loop = RunLoop.main
+  let timeout = Date(timeIntervalSinceNow: 2)
+  let timer = Timer(fire: timeout, interval: 0, repeats: false) { _ in }
+  loop.add(timer, forMode: .modalPanel)
+  defer { timer.invalidate() }
+  var finished = false
+  captures.flush { _ in
+    pins.flush { _ in
+      finished = true
+      CFRunLoopStop(CFRunLoopGetMain())
+    }
+  }
+  while !finished && Date() < timeout {
+    _ = loop.run(mode: .modalPanel, before: timeout)
+  }
+  #expect(finished)
+}
+
 @Test @MainActor func nativeMaterialsAndToolbarLayout() throws {
   let canvas = CanvasView(frame: nativeFrame())
   let window = CaptureWindow(

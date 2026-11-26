@@ -169,10 +169,13 @@ final class CaptureHistory: @unchecked Sendable {
     }
   }
 
-  func flush(_ completion: @escaping @Sendable (Result<Void, Error>) -> Void) {
+  func flush(_ completion: @escaping @MainActor @Sendable (Result<Void, Error>) -> Void) {
     queue.async {
       let result: Result<Void, Error> = (self.loadError ?? self.writeError).map { .failure($0) } ?? .success(())
-      DispatchQueue.main.async { completion(result) }
+      // AppKit can be waiting for this write in its modal termination loop.
+      RunLoop.main.perform(inModes: [.common, .modalPanel]) {
+        MainActor.assumeIsolated { completion(result) }
+      }
     }
   }
 
