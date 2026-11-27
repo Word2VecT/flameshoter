@@ -1,117 +1,105 @@
 <div align="center">
-  <img src="packaging/macos/Flameshoter-Default.png" width="128" alt="Flameshoter">
+  <img src="packaging/macos/Flameshoter-Default.png" width="96" alt="Flameshoter">
   <h1>Flameshoter</h1>
-  <p>Simple screenshot capture and annotation for macOS.</p>
+  <p>A native screenshot tool for the Mac menu bar. Annotate a selection, extract text, pin a reference, or record a walkthrough.</p>
   <p>
-    <a href="https://github.com/Word2VecT/flameshoter/actions/workflows/macos.yml"><img src="https://img.shields.io/github/actions/workflow/status/Word2VecT/flameshoter/macos.yml?branch=master&amp;label=macOS" alt="macOS build"></a>
+    <a href="https://github.com/Word2VecT/flameshoter/actions/workflows/macos.yml"><img src="https://img.shields.io/github/actions/workflow/status/Word2VecT/flameshoter/macos.yml?branch=master&amp;label=macOS" alt="macOS build status"></a>
     <a href="https://github.com/Word2VecT/flameshoter/releases"><img src="https://img.shields.io/github/v/release/Word2VecT/flameshoter" alt="Latest release"></a>
     <a href="LICENSE"><img src="https://img.shields.io/github/license/Word2VecT/flameshoter" alt="License"></a>
   </p>
-  <p><a href="README.md">简体中文</a></p>
+  <p><a href="#installation">Install</a> · <a href="#your-first-capture">Your first capture</a> · <a href="#keyboard-shortcuts">Shortcuts</a> · <a href="https://github.com/Word2VecT/flameshoter/issues">Report an issue</a> · <a href="README.md">简体中文</a></p>
 </div>
 
-## Index
-
-- [Features](#features)
-- [Usage](#usage)
-- [Keyboard shortcuts](#keyboard-shortcuts)
-- [Installation](#installation)
-- [Compilation](#compilation)
-- [License](#license)
-- [Contribute](#contribute)
-
-## Features
-
-- Region capture, multiple displays, delayed captures and automatic window selection; Accessibility access enables interface-element detection.
-- Refresh the screen while preserving the selection and annotations; optionally include the pointer in screenshots.
-- Save and cycle through capture regions per display.
-- Restore screenshot history on the same display and scale, and edit its annotations. History retains the original selected image, including before redaction; recording can be disabled and history cleared in Settings.
-- Vertical and horizontal scrolling captures with preview, cropping, copying, saving and pinning.
-- Record a region with frame rate, delay, audio, pause, preview and trimming; save as MP4, GIF or animated WebP. Optionally show mouse clicks, keyboard shortcuts and camera picture-in-picture.
-- In-app annotation: pencil, lines, polylines, arrows, shapes, spotlight, magnification, text, tiled watermarks, numbers and redaction.
-- Automatically redact locally recognized emails, phone numbers, URLs / IP addresses, labeled credentials and faces. Adjust or undo the results, and check them before sharing.
-- Copy, save, pin and share through the macOS share sheet.
-- Pin clipboard images, GIF and animated WebP, text, colors and files; rotate, flip horizontally, lock and annotate pins. Restore open and recently closed pins after restarting.
-- Recognize text, QR codes and barcodes offline in captures and pinned images; select text directly in images.
-- Translate screenshots or pinned images on your Mac, edit the original and translated text, and create a translated image. Some languages require an initial system download.
-- Recognize tables in screenshots or pinned images on your Mac, edit cells, sort and adjust rows and columns, and save CSV or Excel files with recognized merged cells.
-- Recognize document text locally, proofread it and export Word, RTF, TXT or Markdown. Exports contain editable text paragraphs; complex layout and formula reconstruction are not supported yet.
-- Pick and copy colors in HEX, RGB, HSV and other formats; save as PNG, lossless WebP, PDF, AVIF and more. PNG optimization is optional.
-- Compare the original with the export preview, inspect pixel dimensions and file size, and adjust JPEG / AVIF quality before saving.
-- English, Simplified Chinese and customizable shortcuts.
-- Native Apple Liquid Glass interface.
-
-See the [PixPin feature comparison](docs/PIXPIN_PARITY.md) for offline coverage and remaining gaps.
-
-## Usage
-
-Launching Flameshoter keeps it running in the menu bar. Click the flame icon or press **⌘⇧X** to capture, then select a region and annotate it.
-
-You can also use the command line:
-
-```sh
-flameshoter gui                    # Region capture
-flameshoter gui -d 2000            # Capture after 2 seconds
-flameshoter full -p ~/Pictures     # Save a full-screen capture
-flameshoter config                 # Open settings
-```
-
-Open Settings from the menu bar to change the language, tools and shortcuts. Run `flameshoter --help` for all command-line options.
-
-Click each polyline vertex, then double-click or press Return to finish. Backspace removes the last vertex; Esc discards the current polyline. Adjust spotlight, magnification and watermark parameters in Tool Settings. Use a pin's context menu to rotate, flip or annotate it; Return in the annotation window creates a new pin, and cancel returns to the original.
-
-Camera and keyboard overlays are off by default. Enabling them requests Camera or Input Monitoring access. Keyboard overlays show shortcuts and navigation keys, skipping ordinary text and secure input.
-
-## Keyboard shortcuts
-
-These are the defaults. Shortcuts can be changed in Settings.
-
-| Keys | Action |
-| --- | --- |
-| ⌘⇧X | Global region capture |
-| P / D / A | Pencil / line / arrow |
-| R / C / M | Rectangle / ellipse / highlighter |
-| T / N / B | Text / number / redaction |
-| V / O / E / W | Polyline / spotlight / magnification / watermark |
-| ⇧B | Automatic redaction |
-| ⌘C / ⌘S / ⌘⇧S | Copy / save / share |
-| ⌘Z / ⌘⇧Z | Undo / redo |
-| ⌘P | Pin capture |
-| ⌃⇧2 / ⌃⇧3 | Pin clipboard / restore the last closed pin |
-| ⇧C / Q | Recognize text / QR codes and barcodes |
-| ⌥Q | Translate a screenshot or pinned image |
-| ⇧Q | Recognize a table in a screenshot or pinned image |
-| ⌥D | Recognize a document in a screenshot or pinned image |
-| L / Space (in a pin) | Lock pin / annotate again |
-| L | Scrolling capture |
-| G | Record screen |
-| F5 | Hold to view the screen and release to refresh the capture |
-| , / . | Previous / next screenshot in history |
-| [ / ] | Previous / next capture region |
-| ⌥C | Copy the color under the pointer; hold ⌥ and press ⇧ to change formats |
-| Space / right-click | Tool settings |
-| Esc | Cancel capture |
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/images/region-capture-dark.png">
+    <img src="docs/images/region-capture.png" width="800" alt="A chart selected in Flameshoter, with annotation tools below, capture actions on the right, and pixel dimensions inside the selection.">
+  </picture>
+</p>
 
 ## Installation
 
-Requires **Apple Silicon and macOS 26 or newer**.
-
-### Homebrew
+Requires an **Apple Silicon Mac running macOS 26 or later**. Install the app and command-line tool with Homebrew.
 
 ```sh
 brew install --cask Word2VecT/tap/flameshoter
-brew upgrade --cask flameshoter
 ```
 
-### Direct download
+To update, run `brew upgrade --cask flameshoter`. You can also download the arm64 ZIP, unzip it, and move `Flameshoter.app` to Applications. If macOS blocks the first launch, choose **Open Anyway** in System Settings → Privacy & Security. [Downloads and release notes](https://github.com/Word2VecT/flameshoter/releases/latest)
 
-Download from [Releases](https://github.com/Word2VecT/flameshoter/releases) and move the app to Applications.
+Version 0.3.11 adds offline text extraction with PP-OCRv6 Small for screenshots and pins. [Build guide](docs/BUILDING.md)
 
-Grant Screen Recording access when first capturing. If macOS blocks the first launch, allow it in System Settings → Privacy & Security.
+## Your first capture
 
-## Compilation
+1. Open Flameshoter and press the default shortcut **⌘⇧X**, or choose **Capture region** from the flame icon in the menu bar.
+2. Grant Flameshoter Screen Recording access when macOS prompts you. If macOS asks you to restart the app, reopen it and start the capture again.
+3. Drag to select an area. Press **A** to draw an arrow or **T** to add text. Press **⌘C** to copy, **⌘S** to save, or **⌘P** to pin the image above other windows.
 
-Use Xcode 27 or newer:
+## What you can do
+
+| Task | How it works |
+| --- | --- |
+| Capture a page or conversation | Capture a region, window, or chosen display, or set a delay. For a long page, press **L** to scroll vertically or horizontally, then preview and crop. Hold **F5** to see the live screen and release to refresh the selection with your annotations intact. |
+| Mark a detail or redact a screenshot | Use arrows, polylines, numbered steps, spotlights, magnifiers, and watermarks in the Liquid Glass toolbar. Press **⇧B** to find email addresses, phone numbers, URLs, IP addresses, labeled credentials, and faces on your Mac. Review, adjust, or undo each redaction. |
+| Keep a reference in view | Pin a capture or clipboard content, including images, animated GIF or WebP, text, colors, and files. Rotate, flip, or annotate a static pin. Restore closed pins even after restarting the app. |
+| Work with text and tables | Select text, read QR codes and barcodes, or create a translated image from a capture or pin. Edit and sort table cells before exporting to CSV or Excel. Export document text as editable paragraphs in Word, RTF, TXT, or Markdown. |
+| Record a walkthrough | Press **G** in a selection. Add system or microphone audio, pause, trim, or show clicks, keyboard shortcuts, and a camera overlay. In the preview, choose MP4 to keep recorded audio, or GIF, APNG (`.png`), or WebP for a silent animation. |
+| Export and share | Compare the original and encoded preview, check dimensions and file size, and adjust JPEG or AVIF quality. Export PDF, lossless WebP, or an optionally optimized PNG, or use the system share sheet. Press **⌥C** to copy the color under the pointer. |
+
+**Local processing and history.** Recognize Text on screenshots and pins uses the bundled PP-OCRv6 Small model to extract and copy text offline. You can also select text in the original image with Live Text. Redaction, table recognition, and document recognition run on your Mac. Translation may need an initial language-pack download. Editable screenshot history stores the **original selection before redaction**. For sensitive captures, set **Screenshots retained** to 0 in Settings and use **Clear screenshot history** to remove existing records.
+
+**Optional permissions.** Interface-element detection and automatic scrolling use Accessibility access. Camera and keyboard overlays are off by default. Enabling them requests Camera or Input Monitoring access. Keyboard overlays show shortcuts and navigation keys and skip ordinary typing and secure input.
+
+## Keyboard shortcuts
+
+Use Settings in the menu bar to change capture shortcuts, language, and tools. These are the defaults.
+
+| Where | Keys | Action |
+| --- | --- | --- |
+| Global | ⌘⇧X | Start a region capture |
+| Global | ⌃⇧2 / ⌃⇧3 | Pin clipboard / restore last closed pin |
+| Capture | ⌘C / ⌘S / ⌘⇧S / ⌘P | Copy / save / share / pin |
+| Capture | ⇧C / Q / ⌥Q / ⇧Q / ⌥D | Read text / scan codes / translate / recognize table / recognize document |
+| Capture | L / G / Esc | Scrolling capture / record screen / cancel |
+| Image pin | L / Space | Toggle lock / annotate again |
+
+<details>
+<summary>Annotation, color, and history shortcuts</summary>
+
+| Keys | Action |
+| --- | --- |
+| P / D / A | Pencil / line / arrow |
+| R / C / M | Rectangle / ellipse / highlighter |
+| T / N / B / ⇧B | Text / number / redact / automatic redaction |
+| V / O / E / W | Polyline / spotlight / magnify / watermark |
+| ⌘Z / ⌘⇧Z | Undo / redo |
+| Space / right-click | Open Tool Settings |
+| ⌥C | Copy the color under the pointer. Hold ⌥ and press ⇧ to cycle formats. |
+| [ / ] | Previous / next capture region |
+| , / . | Previous / next editable capture on the same display and scale |
+| F5 | Hold to see the live screen and release to refresh |
+
+Click to place polyline vertices, then double-click or press Return to finish. Backspace removes a vertex and Esc discards the current polyline. Use a pin's context menu to rotate, flip, or annotate it. Press Return after annotating to create a new pin.
+
+</details>
+
+## Command line
+
+Homebrew installs the `flameshoter` command. If you installed the ZIP, you can run `/Applications/Flameshoter.app/Contents/MacOS/Flameshoter` directly.
+
+```sh
+flameshoter gui                    # Select a region interactively
+flameshoter gui -d 2000            # Start the selection after two seconds
+flameshoter full -p ~/Pictures     # Save the entire desktop to Pictures
+flameshoter screen -n 0 --raw > display.png
+flameshoter config                 # Open Settings
+```
+
+Run `flameshoter --help` for all options.
+
+## Development and contributions
+
+Build and package the app with Xcode 27 or later. The build guide covers tests and icon assets for developers using Command Line Tools alone. [Build guide](docs/BUILDING.md) · [Contribution guide](docs/CONTRIBUTING.md)
 
 ```sh
 git clone https://github.com/Word2VecT/flameshoter.git
@@ -119,16 +107,6 @@ cd flameshoter
 ./scripts/build-macos.sh --package
 ```
 
-See [Building](docs/BUILDING.md) for testing, development and packaging details.
+For feature comparisons, see the [Snow Shot comparison](docs/SNOW_SHOT_COMPARISON.md) and [PixPin comparison](docs/PIXPIN_PARITY.md) (both in Chinese).
 
-## License
-
-- Code is licensed under [GPL-3.0-or-later](LICENSE).
-- The icon derives from Flameshot's artwork and is licensed under the [Free Art License 1.3](licenses/FlameshotLogo-FAL-1.3.txt).
-- See [third-party notices](THIRD_PARTY.md) for provenance and license details.
-
-## Contribute
-
-Report bugs or suggest improvements through [Issues](https://github.com/Word2VecT/flameshoter/issues). Pull requests are welcome.
-
-Thanks to the original authors and contributors of [Flameshot](https://github.com/flameshot-org/flameshot).
+Thanks to the authors and contributors of Flameshot. Flameshoter uses GPL-3.0-or-later. Its icon derives from Flameshot's artwork under the Free Art License 1.3. [Flameshot](https://github.com/flameshot-org/flameshot) · [Code license](LICENSE) · [Icon license](licenses/FlameshotLogo-FAL-1.3.txt) · [Third-party notices](THIRD_PARTY.md)

@@ -867,7 +867,7 @@ import UserNotifications
     NSApp.orderFrontStandardAboutPanel(options: [
       .applicationName: "Flameshoter",
       .applicationVersion: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString")
-        as? String ?? "0.3.10",
+        as? String ?? "0.3.11",
       .version: localized(
         "Native Swift / AppKit · Based on Flameshot", "原生 Swift / AppKit · 基于 Flameshot"),
       .credits: NSAttributedString(

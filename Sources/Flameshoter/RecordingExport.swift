@@ -5,12 +5,13 @@ import ImageIO
 import UniformTypeIdentifiers
 
 enum RecordingFormat: CaseIterable {
-  case mp4, gif, webP
+  case mp4, gif, webP, apng
   var title: String {
     switch self {
     case .mp4: return "MP4"
     case .gif: return "GIF"
     case .webP: return "WebP"
+    case .apng: return "APNG"
     }
   }
   var type: UTType {
@@ -18,6 +19,7 @@ enum RecordingFormat: CaseIterable {
     case .mp4: return .mpeg4Movie
     case .gif: return .gif
     case .webP: return .webP
+    case .apng: return .png
     }
   }
   var fileExtension: String {
@@ -25,6 +27,7 @@ enum RecordingFormat: CaseIterable {
     case .mp4: return "mp4"
     case .gif: return "gif"
     case .webP: return "webp"
+    case .apng: return "png"
     }
   }
 }
@@ -60,56 +63,82 @@ enum RecordingExport {
     guard framesPerSecond > 0, seconds.isFinite, seconds > 0,
       seconds * 1000 <= Double(Int32.max), seconds * Double(framesPerSecond) < Double(Int32.max)
     else { throw RecordingError.export }
-    let count = max(1, Int(ceil(seconds * Double(framesPerSecond))))
+    let sampleCount = max(1, Int(ceil(seconds * Double(framesPerSecond))))
+    // ImageIO emits a static PNG for one frame. Hold a short selection over two
+    // frames so it still has animation timing and loop metadata.
+    let needsHoldFrame = format == .apng && sampleCount == 1
+    let count = needsHoldFrame ? 2 : sampleCount
+    let frameRate = needsHoldFrame ? 2 / seconds : Double(framesPerSecond)
     let generator = AVAssetImageGenerator(asset: asset)
     generator.appliesPreferredTrackTransform = true
     generator.requestedTimeToleranceBefore = .zero
     generator.requestedTimeToleranceAfter = .zero
-    let gif: CGImageDestination?
-    if format == .gif {
-      gif = CGImageDestinationCreateWithURL(
-        destination as CFURL, UTType.gif.identifier as CFString, count, nil)
-      guard let gif else { throw RecordingError.export }
-      CGImageDestinationSetProperties(
-        gif, [kCGImagePropertyGIFDictionary: [kCGImagePropertyGIFLoopCount: 0]] as CFDictionary)
+    let imageDestination: CGImageDestination?
+    if format == .gif || format == .apng {
+      imageDestination = CGImageDestinationCreateWithURL(
+        destination as CFURL, format.type.identifier as CFString, count, nil)
+      guard let imageDestination else { throw RecordingError.export }
+      let loopProperties =
+        format == .gif
+        ? [kCGImagePropertyGIFDictionary: [kCGImagePropertyGIFLoopCount: 0]]
+        : [kCGImagePropertyPNGDictionary: [kCGImagePropertyAPNGLoopCount: 0]]
+      CGImageDestinationSetProperties(imageDestination, loopProperties as CFDictionary)
     } else {
-      gif = nil
+      imageDestination = nil
     }
     var webP: AnimatedWebPEncoder?
+    var lastProgressStep = 0
     for index in 0..<count {
       try Task.checkCancellation()
-      let offset = Double(index) / Double(framesPerSecond)
-      let time = CMTimeAdd(first, CMTime(seconds: offset, preferredTimescale: 60_000))
+      let offset = Double(index) / frameRate
+      let time =
+        needsHoldFrame
+        ? first : CMTimeAdd(first, CMTime(seconds: offset, preferredTimescale: 60_000))
       let image = try await generator.image(at: time).image
-      let remaining = min(1 / Double(framesPerSecond), seconds - offset)
-      if let gif {
-        // GIF stores delays in hundredths of a second. Round cumulative times so
-        // fractional frame delays do not make the whole animation run faster.
-        let beginning = (offset * 100).rounded()
-        let ending = ((offset + remaining) * 100).rounded()
-        let delay = max(1, ending - beginning) / 100
-        let properties =
-          [
+      if let imageDestination {
+        // ImageIO writes GIF in centiseconds and APNG in milliseconds. Rounding
+        // cumulative timestamps keeps the final frame aligned with the trim point.
+        let ticksPerSecond = format == .gif ? 100.0 : 1000.0
+        let beginning = (offset * ticksPerSecond).rounded()
+        let nextOffset = min(seconds, Double(index + 1) / frameRate)
+        let ending = (nextOffset * ticksPerSecond).rounded()
+        let delay = max(1, ending - beginning) / ticksPerSecond
+        let properties: [CFString: [CFString: Double]]
+        if format == .gif {
+          properties = [
             kCGImagePropertyGIFDictionary: [
-              kCGImagePropertyGIFDelayTime: delay,
-              kCGImagePropertyGIFUnclampedDelayTime: delay,
+              kCGImagePropertyGIFDelayTime: delay, kCGImagePropertyGIFUnclampedDelayTime: delay,
             ]
-          ] as CFDictionary
-        CGImageDestinationAddImage(gif, image, properties)
+          ]
+        } else {
+          properties = [
+            kCGImagePropertyPNGDictionary: [
+              kCGImagePropertyAPNGDelayTime: delay,
+              kCGImagePropertyAPNGUnclampedDelayTime: delay,
+            ]
+          ]
+        }
+        CGImageDestinationAddImage(imageDestination, image, properties as CFDictionary)
       } else {
         if webP == nil { webP = try AnimatedWebPEncoder(width: image.width, height: image.height) }
         try webP?.add(image, at: Int((offset * 1000).rounded()))
       }
-      progress(Double(index + 1) / Double(count))
+      let step = (index + 1) * 20 / count
+      if step > lastProgressStep && step < 20 {
+        progress(Double(step) / 20)
+        lastProgressStep = step
+      }
     }
     try Task.checkCancellation()
-    if let gif {
-      guard CGImageDestinationFinalize(gif) else { throw RecordingError.export }
+    if let imageDestination {
+      guard CGImageDestinationFinalize(imageDestination) else { throw RecordingError.export }
     } else {
       guard let webP else { throw RecordingError.empty }
       try webP.data(duration: max(1, Int((seconds * 1000).rounded()))).write(
         to: destination, options: .atomic)
     }
+    try Task.checkCancellation()
+    progress(1)
   }
 
   static func install(_ staged: URL, at destination: URL) throws {

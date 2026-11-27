@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Build a portable, signed bundle; reject accidental developer-machine dependencies."""
 import argparse
+import hashlib
 import os
 from pathlib import Path
 import plistlib
@@ -52,7 +53,14 @@ def sign(app, identity, keychain=None, hardened_runtime=False):
 
 
 def audit(app):
-    binary = app / 'Contents/MacOS/Flameshoter'
+    models = app / 'Contents/Resources/OCRModels'
+    for name, checksum in {
+        'PP-OCRv6_det_small.onnx': '090f04abcd9d9a7498bc4ebf677e4cb9bdce1fe4197ddb7e529f1ef44e1ff94f',
+        'PP-OCRv6_rec_small.onnx': '6f327246b50388f3c176ae304bd95767ea6dc0c9ae92153ef8cbe210b3c14884',
+        'ppocrv6_dict.txt': 'b5f2bfe2bdd9448429e3e82b51c789775d9b42f2403d082b00662eb77e401c5d',
+    }.items():
+        if hashlib.sha256((models / name).read_bytes()).hexdigest() != checksum:
+            raise RuntimeError(f'Invalid bundled OCR resource: {name}')
     info = plistlib.loads((app / 'Contents/Info.plist').read_bytes())
     minimum = tuple(map(int, (info['LSMinimumSystemVersion'].split('.') + ['0', '0'])[:3]))
     for executable in macho_files(app):
@@ -120,6 +128,8 @@ def main():
         (app / 'Contents/Info.plist').write_bytes(plistlib.dumps(info))
         resources = app / 'Contents/Resources'
         shutil.copytree(source / 'Resources', resources, copy_function=copy_without_xattrs)
+        shutil.copytree(source / 'Sources/Flameshoter/OCRModels', resources / 'OCRModels',
+                        copy_function=copy_without_xattrs)
         if args.icon_assets:
             for name in ['Assets.car', 'Flameshoter.icns']:
                 shutil.copyfile(args.icon_assets / name, resources / name)

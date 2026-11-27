@@ -40,7 +40,8 @@ import UniformTypeIdentifiers
     format = ActionPopup(items: RecordingFormat.allCases.map(\.title), selected: 0) {
       [weak self] index in
       self?.status.stringValue =
-        index == 0 ? "" : localized("GIF and WebP contain no audio.", "GIF 和 WebP 不包含声音。")
+        RecordingFormat.allCases[index] == .mp4
+        ? "" : localized("Animated images are silent.", "动图不包含声音。")
     }
     trimButton = ActionButton(localized("Trim", "修剪")) { [weak self] in self?.trim() }
     saveButton = ActionButton(localized("Save…", "保存…")) { [weak self] in self?.save() }
@@ -131,8 +132,8 @@ import UniformTypeIdentifiers
             movie: source, to: temporary, format: selected, from: start, to: end,
             framesPerSecond: fps
           ) { progress in
-            let percent = Int(progress * 100)
-            if percent % 5 == 0 { Task { @MainActor in report(percent) } }
+            let percent = Int((progress * 100).rounded())
+            Task { @MainActor in report(percent) }
           }
         }
         exportTask = worker

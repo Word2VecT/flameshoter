@@ -1,4 +1,8 @@
-# Flameshoter 0.3.5
+# Flameshoter 0.3.11
+
+Extract text from screenshots and pinned images offline with the bundled PP-OCRv6 Small detector and recognizer. The engine uses Metal on Apple Silicon and reuses the loaded models across selections. Copy the full result or a selected passage. Live Text remains available for selection on the original image.
+
+Export recordings as animated PNG, refresh capture previews, translate screenshots locally, and edit recognized tables for spreadsheet export.
 
 Recall prior capture regions for each display and choose how many regions to keep.
 

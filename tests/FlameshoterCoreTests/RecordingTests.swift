@@ -2,6 +2,7 @@
 import AVFoundation
 import AppKit
 import ImageIO
+import Synchronization
 import Testing
 
 @testable import Flameshoter
@@ -202,6 +203,71 @@ private func recordingFixtureWithAudio(video: URL, audio: URL, output: URL) asyn
     try #require(ScreenColor.sample(firstFrame, point: CGPoint(x: 30, y: 30), scale: 1)).red > 220)
   #expect(
     try #require(ScreenColor.sample(lastFrame, point: CGPoint(x: 30, y: 30), scale: 1)).blue > 220)
+}
+
+@Test func recordingExportsLoopingAPNGWithTrimmedFrameTiming() async throws {
+  let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+  try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+  defer { try? FileManager.default.removeItem(at: folder) }
+  let red = folder.appendingPathComponent("red.mp4")
+  let blue = folder.appendingPathComponent("blue.mp4")
+  try await recordingFixture(red, red: 255, blue: 0)
+  try await recordingFixture(blue, red: 0, blue: 255)
+  let movie = try await RecordingMovie.combine(
+    [red, blue], into: folder.appendingPathComponent("both.mp4"))
+  let start = CMTime(value: 12, timescale: 24)
+  let end = CMTime(value: 87, timescale: 48)
+  let destination = folder.appendingPathComponent("clip").appendingPathExtension(
+    RecordingFormat.apng.fileExtension)
+  let updates = Mutex<[Double]>([])
+  try await RecordingExport.write(
+    movie: movie, to: destination, format: .apng, from: start, to: end, framesPerSecond: 24
+  ) { value in updates.withLock { $0.append(value) } }
+
+  let source = try #require(CGImageSourceCreateWithURL(destination as CFURL, nil))
+  #expect(CGImageSourceGetType(source) as String? == "public.png")
+  #expect(CGImageSourceGetCount(source) == 32)
+  let properties = try #require(CGImageSourceCopyProperties(source, nil) as? [CFString: Any])
+  let animation = try #require(properties[kCGImagePropertyPNGDictionary] as? [CFString: Any])
+  #expect(animation[kCGImagePropertyAPNGLoopCount] as? Int == 0)
+  var duration = 0.0
+  for index in 0..<CGImageSourceGetCount(source) {
+    let frameProperties = try #require(
+      CGImageSourceCopyPropertiesAtIndex(source, index, nil) as? [CFString: Any])
+    let png = try #require(frameProperties[kCGImagePropertyPNGDictionary] as? [CFString: Any])
+    let delay = try #require(png[kCGImagePropertyAPNGUnclampedDelayTime] as? Double)
+    #expect(abs(delay - (index == 31 ? 1.0 / 48 : 1.0 / 24)) < 0.0011)
+    duration += delay
+  }
+  #expect(abs(duration - (end - start).seconds) < 0.001)
+  for (index, isRed) in [(0, true), (11, true), (12, false), (31, false)] {
+    let image = try #require(CGImageSourceCreateImageAtIndex(source, index, nil))
+    let color = try #require(ScreenColor.sample(image, point: CGPoint(x: 30, y: 30), scale: 1))
+    #expect(isRed ? color.red > 220 && color.blue < 30 : color.blue > 220 && color.red < 30)
+  }
+  #expect(updates.withLock { $0 } == (1...20).map { Double($0) / 20 })
+}
+
+@Test func subframeAPNGTrimStillContainsAnimationTiming() async throws {
+  let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+  try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+  defer { try? FileManager.default.removeItem(at: folder) }
+  let movie = folder.appendingPathComponent("red.mp4")
+  try await recordingFixture(movie, red: 255, blue: 0)
+  let clip = folder.appendingPathComponent("short.png")
+  try await RecordingExport.write(
+    movie: movie, to: clip, format: .apng, from: .zero,
+    to: CMTime(value: 30, timescale: 1000), framesPerSecond: 24
+  ) { _ in }
+  let source = try #require(CGImageSourceCreateWithURL(clip as CFURL, nil))
+  #expect(CGImageSourceGetCount(source) == 2)
+  for index in 0..<CGImageSourceGetCount(source) {
+    let frame = try #require(
+      CGImageSourceCopyPropertiesAtIndex(source, index, nil) as? [CFString: Any])
+    let png = try #require(frame[kCGImagePropertyPNGDictionary] as? [CFString: Any])
+    let delay = try #require(png[kCGImagePropertyAPNGUnclampedDelayTime] as? Double)
+    #expect(abs(delay - 0.015) < 0.0001)
+  }
 }
 
 @Test func savingRecordingReplacesTheChosenFile() throws {

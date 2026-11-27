@@ -1,0 +1,4 @@
+module CRapidOCR {
+  header "rapidocrlite/rapidocrlite.h"
+  export *
+}

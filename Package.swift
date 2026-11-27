@@ -6,6 +6,7 @@ let package = Package(
   platforms: [.macOS("26.0")],
   products: [.executable(name: "Flameshoter", targets: ["Flameshoter"])],
   targets: [
+    .binaryTarget(name: "CRapidOCR", path: "Vendor/CRapidOCR.xcframework"),
     .target(
       name: "CWebP", path: "Vendor/libwebp", sources: ["src", "sharpyuv"],
       publicHeadersPath: "src/webp",
@@ -16,7 +17,12 @@ let package = Package(
       publicHeadersPath: "include", cSettings: [.define("USE_STANDARD_TMPFILE"), .define("USE_NO_MD5")],
       linkerSettings: [.linkedLibrary("z")]),
     .target(name: "FlameshoterCore", dependencies: ["CWebP"]),
-    .executableTarget(name: "Flameshoter", dependencies: ["FlameshoterCore", "CXLSXWriter"]),
+    .executableTarget(
+      name: "Flameshoter", dependencies: ["FlameshoterCore", "CXLSXWriter", "CRapidOCR"],
+      resources: [.copy("OCRModels")],
+      linkerSettings: [
+        .linkedLibrary("c++"), .linkedFramework("Accelerate"), .linkedFramework("Metal"),
+      ]),
     .testTarget(
       name: "FlameshoterCoreTests", dependencies: ["FlameshoterCore", "Flameshoter"],
       resources: [.copy("Fixtures")]),

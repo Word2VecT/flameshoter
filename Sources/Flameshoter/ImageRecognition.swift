@@ -98,6 +98,7 @@ final class RecognitionWindowController: NSWindowController, NSWindowDelegate,
   private let saveButton = ActionButton(
     localized("Save document…", "保存文档…"), symbol: "square.and.arrow.down", action: {})
   private var recognitionTask: Task<Void, Never>?
+  private var selectionTask: Task<Void, Never>?
   var onClose: ((RecognitionWindowController) -> Void)?
 
   init(image: CGImage, kind: RecognitionKind) {
@@ -158,6 +159,12 @@ final class RecognitionWindowController: NSWindowController, NSWindowDelegate,
     overlay.preferredInteractionTypes = .textSelection
     overlay.delegate = self
     imageView.addSubview(overlay)
+    if kind == .text {
+      // VisionKit supplies the selectable original only when the reader uses that pane.
+      overlay.addTrackingArea(NSTrackingArea(
+        rect: .zero, options: [.mouseEnteredAndExited, .activeInKeyWindow, .inVisibleRect],
+        owner: self, userInfo: nil))
+    }
     split.addArrangedSubview(imageContainer)
     let scroll = NSScrollView()
     scroll.hasVerticalScroller = true
@@ -209,33 +216,48 @@ final class RecognitionWindowController: NSWindowController, NSWindowDelegate,
     showWindow(nil)
     window?.makeKeyAndOrderFront(nil)
     NSApp.activate()
+    if NSWorkspace.shared.isVoiceOverEnabled { prepareImageSelection() }
     recognitionTask?.cancel()
-    recognitionTask = Task { [weak self] in
-      guard let self else { return }
-      do {
-        switch self.kind {
-        case .text:
-          let analysis = try await ImageRecognition.text(self.image)
-          guard !Task.isCancelled else { return }
-          self.overlay.analysis = analysis
-          self.showResult(analysis.transcript)
-        case .qrCode:
-          let codes = try await ImageRecognition.barcodes(self.image)
-          guard !Task.isCancelled else { return }
-          self.showResult(codes.map(\.payload).joined(separator: "\n"))
-          if !codes.isEmpty {
-            self.status.stringValue = codes.map(\.symbology).joined(separator: ", ")
-          }
-        case .document:
-          let text = try await DocumentRecognition.text(self.image)
-          guard !Task.isCancelled else { return }
-          self.showResult(text)
-        }
-      } catch {
+    recognitionTask = Task { [weak self] in await self?.recognize() }
+  }
+
+  func recognize() async {
+    do {
+      switch kind {
+      case .text:
+        let transcript = try await PaddleTextRecognition.shared.transcript(image)
         guard !Task.isCancelled else { return }
-        self.status.stringValue =
-          localized("Recognition failed", "识别失败") + ": " + errorMessage(error)
+        showResult(transcript)
+      case .qrCode:
+        let codes = try await ImageRecognition.barcodes(image)
+        guard !Task.isCancelled else { return }
+        showResult(codes.map(\.payload).joined(separator: "\n"))
+        if !codes.isEmpty {
+          status.stringValue = codes.map(\.symbology).joined(separator: ", ")
+        }
+      case .document:
+        let text = try await DocumentRecognition.text(image)
+        guard !Task.isCancelled else { return }
+        showResult(text)
       }
+    } catch {
+      guard !Task.isCancelled else { return }
+      status.stringValue =
+        localized("Recognition failed", "识别失败") + ": " + errorMessage(error)
+    }
+  }
+
+  override func mouseEntered(with event: NSEvent) {
+    prepareImageSelection()
+  }
+
+  private func prepareImageSelection() {
+    guard kind == .text, overlay.analysis == nil, selectionTask == nil else { return }
+    selectionTask = Task { [weak self, image] in
+      let analysis = try? await ImageRecognition.text(image)
+      guard !Task.isCancelled else { return }
+      self?.overlay.analysis = analysis
+      self?.selectionTask = nil
     }
   }
 
@@ -252,15 +274,15 @@ final class RecognitionWindowController: NSWindowController, NSWindowDelegate,
       : localized("Recognition complete", "识别完成")
   }
 
-  private func copyText() {
+  func copyText(to pasteboard: NSPasteboard = .general) {
     let range = textView.selectedRange()
     let selected = range.length > 0 ? (textView.string as NSString).substring(with: range) : ""
     let value =
       !selected.isEmpty
       ? selected : (!overlay.selectedText.isEmpty ? overlay.selectedText : textView.string)
     guard !value.isEmpty else { return }
-    NSPasteboard.general.clearContents()
-    NSPasteboard.general.setString(value, forType: .string)
+    pasteboard.clearContents()
+    pasteboard.setString(value, forType: .string)
   }
 
   func overlayView(
@@ -308,6 +330,8 @@ final class RecognitionWindowController: NSWindowController, NSWindowDelegate,
   }
   func windowWillClose(_ notification: Notification) {
     recognitionTask?.cancel()
+    selectionTask?.cancel()
+    selectionTask = nil
     onClose?(self)
   }
 }

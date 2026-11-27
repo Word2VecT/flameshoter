@@ -8,7 +8,7 @@ The macOS UI requires a macOS 26+ SDK; releases use the Xcode 27 toolchain with 
 
 ## Build and test
 
-Install Swift 6.2 or newer with Apple's macOS 26+ SDK. Qt, CMake, Ninja, aqt and Homebrew development libraries are not needed. libwebp 1.6.0 is vendored as C sources and linked statically by SwiftPM. Tests and packaging cache the official OxiPNG 10.2.1 arm64 executable after checking its pinned SHA-256; no Rust toolchain is needed. The packaged app includes the optimizer and works offline without Homebrew libraries or tools.
+Install Swift 6.2 or newer with Apple's macOS 26+ SDK. Qt, CMake, Ninja, aqt and Homebrew development libraries are not needed. libwebp 1.6.0 is vendored as C sources and linked statically by SwiftPM. Tests and packaging cache the official OxiPNG 10.2.1 arm64 executable after checking its pinned SHA-256; no Rust toolchain is needed. SwiftPM links the arm64 RapidOCRLite static library from the vendored XCFramework. The packager copies the Small detector, recognizer and character dictionary to Contents/Resources/OCRModels and verifies all three SHA-256 digests. The packaged app runs OCR offline. [SDK and model provenance](../THIRD_PARTY.md)
 
 ```sh
 ./scripts/test-native.sh
@@ -53,6 +53,8 @@ This checks the signatures, pinned certificate, distinct code hashes and mutuall
 The macOS workflow builds and audits every master push. A `v*` tag matching VERSION publishes the ZIP, SHA256 and generated Homebrew cask. Copy the generated Casks/flameshoter.rb into Word2VecT/homebrew-tap and commit it. The generated cask uses an exact release URL and checksum; it never uses `sha256 :no_check` or removes quarantine attributes.
 
 ## Test fixtures
+
+System Vision integration tests run on a Mac with a Metal Performance Shaders device. Run the full suite on physical Apple Silicon when qualifying a release. The bundled PP-OCRv6 Small tests also run on CPU-only hosts.
 
 `FLAMESHOTER_TEST_IMAGE=/absolute/path/to/fixture.png` replaces desktop capture with that image and avoids asking for Screen Recording access. `FLAMESHOTER_TEST_CONFIG=/absolute/path/to/config-root` isolates test preferences. These are opt-in developer fixtures; normal captures use ScreenCaptureKit. Test with `tests/fixtures/capture.svg`, rendered to PNG, rather than private desktop content.
 
