@@ -54,7 +54,7 @@ The macOS workflow builds and audits every master push. A `v*` tag matching VERS
 
 ## Test fixtures
 
-System Vision integration tests run on a Mac with a Metal Performance Shaders device. Run the full suite on physical Apple Silicon when qualifying a release. The bundled PP-OCRv6 Small tests also run on CPU-only hosts.
+The GitHub-hosted macOS virtual machine exposes Metal and MPS but returns empty text or Vision errors in six system OCR integrations. Swift Testing skips those integrations on that runner. Run the full suite on physical Apple Silicon when qualifying a release. The bundled PP-OCRv6 Small tests also run on CPU-only hosts.
 
 `FLAMESHOTER_TEST_IMAGE=/absolute/path/to/fixture.png` replaces desktop capture with that image and avoids asking for Screen Recording access. `FLAMESHOTER_TEST_CONFIG=/absolute/path/to/config-root` isolates test preferences. These are opt-in developer fixtures; normal captures use ScreenCaptureKit. Test with `tests/fixtures/capture.svg`, rendered to PNG, rather than private desktop content.
 

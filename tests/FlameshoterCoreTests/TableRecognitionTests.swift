@@ -37,7 +37,7 @@ import Testing
   return image.cgImage(forProposedRect: nil, context: nil, hints: nil)!
 }
 
-@Test(.requiresVisionAccelerator) @MainActor func systemRecognizesTableRowsAndColumns() async throws {
+@Test(.requiresOnDeviceVision) @MainActor func systemRecognizesTableRowsAndColumns() async throws {
   _ = NSApplication.shared
   let tables = try await TableRecognition.tables(tableFixture())
   let table = try #require(tables.first)

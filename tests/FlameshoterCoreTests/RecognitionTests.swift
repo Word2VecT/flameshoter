@@ -36,7 +36,7 @@ private func qrFixture(_ payload: String) -> CGImage {
   return output.makeImage()!
 }
 
-@Test(.requiresVisionAccelerator) @MainActor func systemRecognitionReadsEnglishAndChinese() async throws {
+@Test(.requiresOnDeviceVision) @MainActor func systemRecognitionReadsEnglishAndChinese() async throws {
   _ = NSApplication.shared
   let image = textFixture(english: "Capture Settings 123")
   let analysis = try await ImageRecognition.text(image)
@@ -87,7 +87,7 @@ private func qrFixture(_ payload: String) -> CGImage {
   #expect(try await PaddleTextRecognition.shared.transcript(blank).isEmpty)
 }
 
-@Test(.requiresVisionAccelerator) @MainActor func recognitionCanUseAnExplicitJapaneseSourceLanguage() async throws {
+@Test(.requiresOnDeviceVision) @MainActor func recognitionCanUseAnExplicitJapaneseSourceLanguage() async throws {
   _ = NSApplication.shared
   let image = NSImage(size: NSSize(width: 700, height: 180))
   image.lockFocus()
@@ -102,7 +102,7 @@ private func qrFixture(_ payload: String) -> CGImage {
   #expect(lines.map(\.text).joined().contains("日本語"))
 }
 
-@Test(.requiresVisionAccelerator) @MainActor func pinnedTextIsInteractiveAndBlankImageSpaceStillDrags() async throws {
+@Test(.requiresOnDeviceVision) @MainActor func pinnedTextIsInteractiveAndBlankImageSpaceStillDrags() async throws {
   _ = NSApplication.shared
   let image = textFixture()
   let pin = PinWindowController(image: image)

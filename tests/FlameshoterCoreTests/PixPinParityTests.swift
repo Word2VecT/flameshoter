@@ -157,7 +157,7 @@ import Testing
   #expect(masks.allSatisfy { !$0.traditionalPixelation && $0.tool == .pixelate })
 }
 
-@Test(.requiresVisionAccelerator) @MainActor func localRedactionFindsAnEmailWithoutCoveringTheWholeLine() async throws {
+@Test(.requiresOnDeviceVision) @MainActor func localRedactionFindsAnEmailWithoutCoveringTheWholeLine() async throws {
   let image = NSImage(size: CGSize(width: 1200, height: 200))
   image.lockFocus()
   NSColor.white.setFill()
@@ -191,7 +191,7 @@ import Testing
   #expect(try DocumentExport.data(text, format: .md) == Data(text.utf8))
 }
 
-@Test(.requiresVisionAccelerator) @MainActor func localDocumentRecognitionReturnsEditableText() async throws {
+@Test(.requiresOnDeviceVision) @MainActor func localDocumentRecognitionReturnsEditableText() async throws {
   let image = NSImage(size: CGSize(width: 600, height: 200))
   image.lockFocus()
   NSColor.white.setFill()
